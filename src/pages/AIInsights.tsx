@@ -53,7 +53,7 @@ const trainingStatus = [
 
 export default function AIInsights() {
   // Timestamp shown in the header so admins know how fresh the dashboard view is.
-  // In a real app, this could come from API response metadata.
+  // could come from API response metadata.
   const lastUpdated = new Date().toLocaleString();
 
   return (
