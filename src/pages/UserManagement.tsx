@@ -13,6 +13,7 @@ interface User {
   lastActive: string;
 }
 
+// Dummy user data (used for testing / UI preview)
 const dummyUsers: User[] = [
   { id: 'MM-1024', name: 'Alex Johnson', email: 'alex.j@example.com', riskLevel: 'Critical', peerGroup: 'Depression Support', status: 'Active', lastActive: '2 mins ago' },
   { id: 'MM-1025', name: 'Maria Garcia', email: 'm.garcia@example.com', riskLevel: 'High', peerGroup: 'Anxiety Support', status: 'Active', lastActive: '15 mins ago' },
@@ -24,6 +25,7 @@ const dummyUsers: User[] = [
 ];
 
 export default function UserManagement() {
+   // Table with user details
   const columns = [
     { header: 'User ID', accessor: 'id' as keyof User, className: 'font-mono text-xs' },
     { 
@@ -83,25 +85,36 @@ export default function UserManagement() {
     },
   ];
 
-  return (
+return (
     <div className="space-y-8">
+
+      {/* Page header section */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">User Management</h2>
           <p className="text-slate-500">Monitor and manage MindMates+ users and their safety levels.</p>
         </div>
+
+        {/* Top-right actions */}
         <div className="flex items-center gap-3">
+
+          {/* Filter button */}
           <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
             <Filter className="w-4 h-4" />
             Filter
           </button>
+
+          {/* Export button */}
           <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 rounded-lg text-sm font-bold text-white hover:bg-indigo-700 transition-colors shadow-sm">
             Export Data
           </button>
         </div>
       </div>
 
+      {/* Search + Filter section */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+
+        {/* Search input */}
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input 
@@ -110,6 +123,8 @@ export default function UserManagement() {
             className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
+
+        {/* Risk level dropdown filter */}
         <select className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
           <option>All Risk Levels</option>
           <option>Critical</option>
@@ -119,6 +134,7 @@ export default function UserManagement() {
         </select>
       </div>
 
+      {/* Data table rendering users */}
       <DataTable columns={columns} data={dummyUsers} />
     </div>
   );
