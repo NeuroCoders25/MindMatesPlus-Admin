@@ -14,16 +14,29 @@ import {
   Pie
 } from 'recharts';
 
+// Shared shape for chart records consumed by all chart types.
+// `name` is commonly used for X-axis/pie labels and `value` for plotting.
+type ChartDataPoint = {
+  name?: string;
+  value: number;
+  color?: string;
+  [key: string]: string | number | undefined;
+};
+
 interface ChartWidgetProps {
   title: string;
   subtitle?: string;
   type: 'area' | 'bar' | 'pie';
-  data: any[];
+  data: ReadonlyArray<ChartDataPoint>;
   height?: number;
 }
 
 export default function ChartWidget({ title, subtitle, type, data, height = 300 }: ChartWidgetProps) {
+  // Recharts expects a mutable array type; cloning keeps prop input immutable for callers.
+  const chartData = [...data];
+
   return (
+    // Reusable analytics card shell used across admin pages.
     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
       <div className="mb-6">
         <h3 className="text-lg font-bold text-slate-900">{title}</h3>
@@ -31,9 +44,15 @@ export default function ChartWidget({ title, subtitle, type, data, height = 300 
       </div>
       
       <div style={{ width: '100%', height }}>
+        {/* Guard state for screens where data has not loaded yet. */}
+        {chartData.length === 0 ? (
+          <div className="h-full grid place-items-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
+            No chart data available.
+          </div>
+        ) : (
         <ResponsiveContainer>
           {type === 'area' ? (
-            <AreaChart data={data}>
+            <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
@@ -71,7 +90,7 @@ export default function ChartWidget({ title, subtitle, type, data, height = 300 
               />
             </AreaChart>
           ) : type === 'bar' ? (
-            <BarChart data={data}>
+            <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis 
                 dataKey="name" 
@@ -98,7 +117,7 @@ export default function ChartWidget({ title, subtitle, type, data, height = 300 
           ) : (
             <PieChart>
               <Pie
-                data={data}
+                data={chartData}
                 cx="50%"
                 cy="50%"
                 innerRadius={60}
@@ -106,7 +125,7 @@ export default function ChartWidget({ title, subtitle, type, data, height = 300 
                 paddingAngle={5}
                 dataKey="value"
               >
-                {data.map((entry, index) => (
+                {chartData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.color || '#6366f1'} />
                 ))}
               </Pie>
@@ -114,6 +133,7 @@ export default function ChartWidget({ title, subtitle, type, data, height = 300 
             </PieChart>
           )}
         </ResponsiveContainer>
+        )}
       </div>
     </div>
   );
