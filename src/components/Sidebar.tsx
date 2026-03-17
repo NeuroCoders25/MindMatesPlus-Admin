@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
+// Sidebar navigation is data-driven so links can be managed in one place.
 const navItems = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard },
   { name: 'User Management', path: '/users', icon: Users },
@@ -28,7 +29,9 @@ const navItems = [
 
 export default function Sidebar() {
   return (
+    // Fixed-height sidebar that stays visible while main content scrolls.
     <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-screen sticky top-0 border-r border-slate-800">
+      {/* Brand/logo area at the top of the sidebar */}
       <div className="p-6 flex items-center gap-3">
         <div className="bg-indigo-600 p-2 rounded-lg">
           <HeartPulse className="text-white w-6 h-6" />
@@ -36,11 +39,13 @@ export default function Sidebar() {
         <h1 className="text-xl font-bold text-white tracking-tight">MindMates+</h1>
       </div>
       
+      {/* Main navigation list */}
       <nav className="flex-1 px-4 space-y-1 overflow-y-auto py-4">
         {navItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
+            // NavLink gives isActive for route-aware styling.
             className={({ isActive }) => cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group",
               isActive 
@@ -48,6 +53,7 @@ export default function Sidebar() {
                 : "hover:bg-slate-800 hover:text-white"
             )}
           >
+            {/* Dynamic icon component from each nav item */}
             <item.icon className={cn(
               "w-5 h-5 transition-colors",
               "group-hover:text-indigo-400"
@@ -57,6 +63,7 @@ export default function Sidebar() {
         ))}
       </nav>
       
+      {/* Admin identity footer section */}
       <div className="p-4 border-t border-slate-800">
         <div className="bg-slate-800/50 rounded-xl p-4">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Admin Mode</p>
