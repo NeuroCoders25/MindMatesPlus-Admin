@@ -10,10 +10,10 @@ import {
   BarChart3,
   MessageSquareQuote,
   Settings,
-  HeartPulse
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
+import logo from '../assets/logo.png';
 
 function getInitials(name: string): string {
   const parts = name.trim().split(' ').filter(Boolean);
@@ -44,11 +44,8 @@ export default function Sidebar() {
     // Fixed-height sidebar that stays visible while main content scrolls.
     <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-screen sticky top-0 border-r border-slate-800">
       {/* Brand/logo area at the top of the sidebar */}
-      <div className="p-6 flex items-center gap-3">
-        <div className="bg-indigo-600 p-2 rounded-lg">
-          <HeartPulse className="text-white w-6 h-6" />
-        </div>
-        <h1 className="text-xl font-bold text-white tracking-tight">MindMates+</h1>
+      <div className="p-5 flex items-center justify-center">
+        <img src={logo} alt="MindMates+" className="h-12 w-auto object-contain" />
       </div>
       
       {/* Main navigation list */}

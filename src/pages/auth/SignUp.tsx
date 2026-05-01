@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { Eye, EyeOff, Brain, UserPlus } from 'lucide-react';
+import { Eye, EyeOff, UserPlus } from 'lucide-react';
 import { auth, db } from '../../lib/firebase';
+import logo from '../../assets/logo.png';
 
 export default function SignUp() {
   const navigate = useNavigate();
@@ -51,16 +52,13 @@ export default function SignUp() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
 
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200 mb-4">
-            <Brain className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900">MindMates<span className="text-indigo-600">Plus</span></h1>
-          <p className="text-sm text-slate-500 mt-1">Admin Dashboard</p>
+          <img src={logo} alt="MindMates+" className="h-16 w-auto object-contain mb-2" />
+          <p className="text-sm text-slate-400 mt-1">Admin Dashboard</p>
         </div>
 
         {/* Card */}
@@ -160,7 +158,7 @@ export default function SignUp() {
           </form>
         </div>
 
-        <p className="text-center text-sm text-slate-500 mt-6">
+        <p className="text-center text-sm text-slate-400 mt-6">
           Already have an account?{' '}
           <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-700 transition-colors">
             Sign in
