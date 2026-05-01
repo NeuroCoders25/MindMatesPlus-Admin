@@ -1,18 +1,25 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Users, 
-  UsersRound, 
-  MessageSquareWarning, 
-  BookOpenText, 
-  BrainCircuit, 
-  BarChart3, 
-  MessageSquareQuote, 
+import {
+  LayoutDashboard,
+  Users,
+  UsersRound,
+  MessageSquareWarning,
+  BookOpenText,
+  BrainCircuit,
+  BarChart3,
+  MessageSquareQuote,
   Settings,
   HeartPulse
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useAuth } from '../context/AuthContext';
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(' ').filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
 
 // Sidebar navigation is data-driven so links can be managed in one place.
 const navItems = [
@@ -28,6 +35,11 @@ const navItems = [
 ];
 
 export default function Sidebar() {
+  const { currentUser } = useAuth();
+  const displayName = currentUser?.displayName || currentUser?.email || 'Admin';
+  const email = currentUser?.email || '';
+  const initials = getInitials(displayName);
+
   return (
     // Fixed-height sidebar that stays visible while main content scrolls.
     <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-screen sticky top-0 border-r border-slate-800">
@@ -69,11 +81,11 @@ export default function Sidebar() {
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Admin Mode</p>
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
-              AD
+              {initials}
             </div>
             <div className="overflow-hidden">
-              <p className="text-sm font-medium text-white truncate">Admin User</p>
-              <p className="text-xs text-slate-500 truncate">admin@mindmates.plus</p>
+              <p className="text-sm font-medium text-white truncate">{displayName}</p>
+              <p className="text-xs text-slate-500 truncate">{email}</p>
             </div>
           </div>
         </div>

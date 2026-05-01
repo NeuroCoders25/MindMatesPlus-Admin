@@ -1,7 +1,11 @@
 import React from 'react';
 import { Bell, Search, UserCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Navbar() {
+  const { currentUser } = useAuth();
+  const displayName = currentUser?.displayName || currentUser?.email || 'Admin';
+
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 sticky top-0 z-10">
       <div className="flex items-center gap-4 flex-1 max-w-md">
@@ -25,7 +29,7 @@ export default function Navbar() {
         
         <div className="flex items-center gap-3 cursor-pointer group">
           <div className="text-right hidden sm:block">
-            <p className="text-sm font-medium text-slate-900 group-hover:text-indigo-600 transition-colors">Dr. Sarah Chen</p>
+            <p className="text-sm font-medium text-slate-900 group-hover:text-indigo-600 transition-colors">{displayName}</p>
             <p className="text-xs text-slate-500">System Administrator</p>
           </div>
           <UserCircle className="w-8 h-8 text-slate-400 group-hover:text-indigo-500 transition-colors" />
