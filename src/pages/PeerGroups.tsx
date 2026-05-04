@@ -34,7 +34,6 @@ interface FirestorePeerGroup {
 }
 
 const GROUP_CATEGORIES = [
-  'Severe Support',
   'Moderate Support',
   'Mild Support',
   'Wellness - Thriving',
@@ -45,7 +44,7 @@ const GROUP_CATEGORIES = [
 
 const dummyGroups: PeerGroup[] = [
   { id: 'PG-001', name: 'Anxiety Support', category: 'Moderate Support', members: 125, activityLevel: 'High', moderator: 'Dr. Sarah Chen', status: 'Active' },
-  { id: 'PG-002', name: 'Depression Support', category: 'Severe Support', members: 90, activityLevel: 'Medium', moderator: 'Dr. James Wilson', status: 'Active' },
+  { id: 'PG-002', name: 'Depression Support', category: 'Moderate Support', members: 90, activityLevel: 'Medium', moderator: 'Dr. James Wilson', status: 'Active' },
   { id: 'PG-003', name: 'Workplace Stress', category: 'Mild Support', members: 211, activityLevel: 'High', moderator: 'Emma Watson', status: 'Active' },
   { id: 'PG-004', name: 'Grief & Loss', category: 'Recovery & Improvement', members: 45, activityLevel: 'Low', moderator: 'Michael Scott', status: 'Active' },
   { id: 'PG-005', name: 'Post-Grad Life', category: 'Wellness - Stress Aware', members: 12, activityLevel: 'Medium', moderator: 'Sarah Miller', status: 'Active' },

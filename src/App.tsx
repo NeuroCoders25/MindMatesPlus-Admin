@@ -15,6 +15,7 @@ import Dashboard from './pages/Dashboard';
 import UserManagement from './pages/UserManagement';
 import PeerGroups from './pages/PeerGroups';
 import ChatMonitoring from './pages/ChatMonitoring';
+import AdvisorChat from './pages/AdvisorChat';
 import JournalInsights from './pages/JournalInsights';
 import AIInsights from './pages/AIInsights';
 import Reports from './pages/Reports';
@@ -58,6 +59,7 @@ export default function App() {
                     <Route path="/users" element={<UserManagement />} />
                     <Route path="/groups" element={<PeerGroups />} />
                     <Route path="/chat" element={<ChatMonitoring />} />
+                    <Route path="/advisor-chat" element={<AdvisorChat />} />
                     <Route path="/journals" element={<JournalInsights />} />
                     <Route path="/ai-insights" element={<AIInsights />} />
                     <Route path="/reports" element={<Reports />} />

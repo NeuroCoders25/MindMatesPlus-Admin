@@ -9,6 +9,7 @@ import {
   BrainCircuit,
   BarChart3,
   MessageSquareQuote,
+  MessageSquare,
   Settings,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -31,6 +32,7 @@ const navItems = [
   { name: 'AI Insights', path: '/ai-insights', icon: BrainCircuit },
   { name: 'Reports & Analytics', path: '/reports', icon: BarChart3 },
   { name: 'Feedback', path: '/feedback', icon: MessageSquareQuote },
+  { name: 'Advisor Chat', path: '/advisor-chat', icon: MessageSquare },
   { name: 'System Settings', path: '/settings', icon: Settings },
 ];
 
