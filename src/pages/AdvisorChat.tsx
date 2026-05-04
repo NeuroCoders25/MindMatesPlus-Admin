@@ -133,8 +133,8 @@ export default function AdvisorChat() {
   };
 
   const filteredAdvisors = advisors.filter(advisor => 
-    advisor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    advisor.specialization.toLowerCase().includes(searchQuery.toLowerCase())
+    (advisor.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+    (advisor.specialization?.toLowerCase() || '').includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -182,7 +182,7 @@ export default function AdvisorChat() {
                       "w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-bold transition-transform duration-300 group-hover:scale-105",
                       selectedAdvisor?.id === advisor.id ? "bg-indigo-600 text-white" : "bg-indigo-100 text-indigo-600"
                     )}>
-                      {advisor.name.charAt(0)}
+                      {advisor.name?.charAt(0) || '?'}
                     </div>
                     <div className={cn(
                       "absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-4 border-slate-50",
@@ -217,7 +217,7 @@ export default function AdvisorChat() {
             <div className="px-8 py-5 border-b border-slate-100 flex items-center justify-between bg-white/80 backdrop-blur-md z-10">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl font-black shadow-lg shadow-indigo-100">
-                   {selectedAdvisor.name.charAt(0)}
+                   {selectedAdvisor.name?.charAt(0) || '?'}
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 leading-tight">{selectedAdvisor.name}</h3>
