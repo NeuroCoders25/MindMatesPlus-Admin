@@ -6,23 +6,17 @@ import {
   MoreVertical, 
   Phone, 
   Video, 
-  Info,
-  Circle,
   MessageSquare
 } from 'lucide-react';
 import { 
   collection, 
   query, 
   onSnapshot, 
-  addDoc, 
-  serverTimestamp, 
-  orderBy,
-  doc,
-  setDoc
 } from 'firebase/firestore';
 import { db as firestoreDb } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
+import { chatService, ChatMessage, PrivateChat } from '../services/chatService';
 
 interface Advisor {
   id: string;
@@ -34,18 +28,12 @@ interface Advisor {
   lastSeen?: any;
 }
 
-interface Message {
-  id: string;
-  text: string;
-  senderId: string;
-  timestamp: any;
-}
-
 export default function AdvisorChat() {
   const { currentUser } = useAuth();
   const [advisors, setAdvisors] = useState<Advisor[]>([]);
   const [selectedAdvisor, setSelectedAdvisor] = useState<Advisor | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [chats, setChats] = useState<PrivateChat[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,6 +47,7 @@ export default function AdvisorChat() {
     scrollToBottom();
   }, [messages]);
 
+  // Fetch Advisors
   useEffect(() => {
     const q = query(collection(firestoreDb, 'advisors'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -86,47 +75,55 @@ export default function AdvisorChat() {
     return () => unsubscribe();
   }, []);
 
+  // Fetch Existing Chats for Admin
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    const unsubscribe = chatService.listenToAdminChats(currentUser.uid, (chatList) => {
+      setChats(chatList);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // Fetch Messages for Selected Advisor
   useEffect(() => {
     if (!selectedAdvisor || !currentUser) return;
 
-    const chatId = [currentUser.uid, selectedAdvisor.id].sort().join('_');
-    const messagesQuery = query(
-      collection(firestoreDb, 'advisor_chats', chatId, 'messages'),
-      orderBy('timestamp', 'asc')
-    );
-
-    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Message[];
+    const chatId = chatService.getChatId(currentUser.uid, selectedAdvisor.id);
+    const unsubscribe = chatService.listenToMessages(chatId, (msgs) => {
       setMessages(msgs);
     });
 
     return () => unsubscribe();
   }, [selectedAdvisor, currentUser]);
 
+  const handleSelectAdvisor = async (advisor: Advisor) => {
+    if (!currentUser) return;
+    setSelectedAdvisor(advisor);
+    try {
+      await chatService.getOrCreateChat(currentUser.uid, advisor.id);
+    } catch (error) {
+      console.error("Error opening chat:", error);
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedAdvisor || !currentUser) return;
 
-    const chatId = [currentUser.uid, selectedAdvisor.id].sort().join('_');
-    const chatRef = doc(firestoreDb, 'advisor_chats', chatId);
-    const messageData = {
-      text: newMessage.trim(),
-      senderId: currentUser.uid,
-      timestamp: serverTimestamp(),
-    };
+    const chatId = chatService.getChatId(currentUser.uid, selectedAdvisor.id);
+    const text = newMessage.trim();
+    setNewMessage(''); // Clear input early for better UX
 
     try {
-      await setDoc(chatRef, {
-        participants: [currentUser.uid, selectedAdvisor.id],
-        lastMessage: newMessage.trim(),
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
-
-      await addDoc(collection(firestoreDb, 'advisor_chats', chatId, 'messages'), messageData);
-      setNewMessage('');
+      await chatService.sendMessage(
+        chatId, 
+        currentUser.uid, 
+        'admin', 
+        selectedAdvisor.id, 
+        text
+      );
     } catch (error) {
       console.error("Error sending message:", error);
     }
@@ -136,6 +133,13 @@ export default function AdvisorChat() {
     (advisor.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
     (advisor.specialization?.toLowerCase() || '').includes(searchQuery.toLowerCase())
   );
+
+  // Helper to get last message for an advisor
+  const getLastMessage = (advisorId: string) => {
+    if (!currentUser) return null;
+    const chatId = chatService.getChatId(currentUser.uid, advisorId);
+    return chats.find(c => c.id === chatId || chatService.getChatId(currentUser.uid, advisorId) === c.id)?.lastMessage;
+  };
 
   return (
     <div className="h-[calc(100vh-120px)] flex bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xl animate-in fade-in zoom-in duration-500">
@@ -166,37 +170,42 @@ export default function AdvisorChat() {
             </div>
           ) : filteredAdvisors.length > 0 ? (
             <div className="space-y-1">
-              {filteredAdvisors.map(advisor => (
-                <button
-                  key={advisor.id}
-                  onClick={() => setSelectedAdvisor(advisor)}
-                  className={cn(
-                    "w-full p-4 flex items-center gap-4 rounded-2xl transition-all duration-300 text-left group",
-                    selectedAdvisor?.id === advisor.id 
-                      ? "bg-white shadow-md shadow-indigo-100 ring-1 ring-slate-100" 
-                      : "hover:bg-white/60"
-                  )}
-                >
-                  <div className="relative">
-                    <div className={cn(
-                      "w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-bold transition-transform duration-300 group-hover:scale-105",
-                      selectedAdvisor?.id === advisor.id ? "bg-indigo-600 text-white" : "bg-indigo-100 text-indigo-600"
-                    )}>
-                      {advisor.name?.charAt(0) || '?'}
+              {filteredAdvisors.map(advisor => {
+                const lastMsg = getLastMessage(advisor.id);
+                return (
+                  <button
+                    key={advisor.id}
+                    onClick={() => handleSelectAdvisor(advisor)}
+                    className={cn(
+                      "w-full p-4 flex items-center gap-4 rounded-2xl transition-all duration-300 text-left group",
+                      selectedAdvisor?.id === advisor.id 
+                        ? "bg-white shadow-md shadow-indigo-100 ring-1 ring-slate-100" 
+                        : "hover:bg-white/60"
+                    )}
+                  >
+                    <div className="relative">
+                      <div className={cn(
+                        "w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-bold transition-transform duration-300 group-hover:scale-105",
+                        selectedAdvisor?.id === advisor.id ? "bg-indigo-600 text-white" : "bg-indigo-100 text-indigo-600"
+                      )}>
+                        {advisor.name?.charAt(0) || '?'}
+                      </div>
+                      <div className={cn(
+                        "absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-4 border-slate-50",
+                        advisor.status === 'online' ? "bg-emerald-500" : "bg-slate-300"
+                      )} />
                     </div>
-                    <div className={cn(
-                      "absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-4 border-slate-50",
-                      advisor.status === 'online' ? "bg-emerald-500" : "bg-slate-300"
-                    )} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start mb-0.5">
-                      <p className="text-sm font-bold text-slate-900 truncate">{advisor.name}</p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start mb-0.5">
+                        <p className="text-sm font-bold text-slate-900 truncate">{advisor.name}</p>
+                      </div>
+                      <p className="text-xs text-slate-500 truncate font-medium">
+                        {lastMsg || advisor.specialization}
+                      </p>
                     </div>
-                    <p className="text-xs text-slate-500 truncate font-medium">{advisor.specialization}</p>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <div className="p-8 text-center space-y-3">
@@ -265,10 +274,10 @@ export default function AdvisorChat() {
                           ? "bg-indigo-600 text-white rounded-tr-none hover:bg-indigo-700 shadow-indigo-100" 
                           : "bg-white text-slate-700 border border-slate-100 rounded-tl-none hover:border-slate-200"
                       )}>
-                        {msg.text}
+                        {msg.messageText}
                       </div>
                       <span className="text-[10px] font-bold text-slate-400 mt-2 px-1 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wider">
-                        {msg.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'Sending...'}
+                        {msg.createdAt?.toDate ? msg.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
                       </span>
                     </div>
                   );
