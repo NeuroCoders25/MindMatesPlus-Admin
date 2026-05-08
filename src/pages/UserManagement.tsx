@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, MoreVertical, Eye, ShieldAlert } from 'lucide-react';
-import { collection, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, collectionGroup, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import DataTable from '../components/DataTable';
 import { cn } from '../lib/utils';
 
 interface User {
+  _docId: string;
   id: string;
   name: string;
   email: string;
@@ -13,6 +14,10 @@ interface User {
   peerGroup: string;
   status: 'Active' | 'Suspended' | 'Inactive';
   lastActive: string;
+}
+
+interface RawUser extends Omit<User, 'riskLevel'> {
+  _rawRiskLevel: unknown;
 }
 
 function toDate(raw: unknown): Date | undefined {
@@ -36,7 +41,13 @@ function formatTimeAgo(date: Date): string {
   return `${Math.floor(days / 7)} week${Math.floor(days / 7) !== 1 ? 's' : ''} ago`;
 }
 
-function normalizeRiskLevel(raw: unknown): 'Low' | 'Medium' | 'High' | 'Critical' {
+function normalizeRiskLevel(raw: unknown, mentalHealthCategory?: string): 'Low' | 'Medium' | 'High' | 'Critical' {
+  if (mentalHealthCategory) {
+    const cat = mentalHealthCategory.toLowerCase();
+    if (cat === 'extremely severe') return 'Critical';
+    if (cat.includes('severe')) return 'High';
+    if (cat.includes('moderate')) return 'Medium';
+  }
   if (typeof raw !== 'string') return 'Low';
   const lower = raw.toLowerCase();
   if (lower === 'critical') return 'Critical';
@@ -54,7 +65,8 @@ function normalizeStatus(raw: unknown): 'Active' | 'Suspended' | 'Inactive' {
 }
 
 export default function UserManagement() {
-  const [users, setUsers] = useState<User[]>([]);
+  const [rawUsers, setRawUsers] = useState<RawUser[]>([]);
+  const [mentalHealthMap, setMentalHealthMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [riskFilter, setRiskFilter] = useState('All Risk Levels');
@@ -63,22 +75,23 @@ export default function UserManagement() {
     const unsub = onSnapshot(
       collection(db, 'users'),
       (snap) => {
-        const mapped: User[] = snap.docs.map((doc) => {
+        const mapped: RawUser[] = snap.docs.map((doc) => {
           const data = doc.data();
           const lastActiveRaw =
             data.lastActive ?? data.last_active ?? data.updatedAt ?? data.updated_at ?? data.createdAt ?? data.created_at;
           const lastActiveDate = toDate(lastActiveRaw);
           return {
+            _docId: doc.id,
             id: doc.id.slice(0, 8).toUpperCase(),
             name: data.displayName ?? data.name ?? 'Unknown',
             email: data.email ?? '',
-            riskLevel: normalizeRiskLevel(data.riskLevel ?? data.risk_level),
+            _rawRiskLevel: data.riskLevel ?? data.risk_level,
             peerGroup: data.peerGroup ?? data.peer_group ?? '—',
             status: normalizeStatus(data.status),
             lastActive: lastActiveDate ? formatTimeAgo(lastActiveDate) : 'Never',
           };
         });
-        setUsers(mapped);
+        setRawUsers(mapped);
         setLoading(false);
       },
       (err) => {
@@ -88,6 +101,36 @@ export default function UserManagement() {
     );
     return unsub;
   }, []);
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collectionGroup(db, 'mentalHealthProfile'),
+      (snap) => {
+        const map: Record<string, string> = {};
+        snap.docs.forEach((d) => {
+          const userId = d.ref.parent.parent?.id;
+          if (!userId) return;
+          const data = d.data();
+          const category =
+            (data.activeRecommendationCategory as string | undefined) ||
+            ((data.initialQuestionnaireScore as Record<string, unknown> | undefined)?.category as string | undefined);
+          if (category) map[userId] = category;
+        });
+        setMentalHealthMap(map);
+      },
+      (err) => console.error('Mental health profiles listener error:', err)
+    );
+    return unsub;
+  }, []);
+
+  const users = useMemo(
+    () =>
+      rawUsers.map((u) => ({
+        ...u,
+        riskLevel: normalizeRiskLevel(u._rawRiskLevel, mentalHealthMap[u._docId]),
+      })),
+    [rawUsers, mentalHealthMap]
+  );
 
   const filtered = users.filter((u) => {
     const q = searchQuery.toLowerCase();

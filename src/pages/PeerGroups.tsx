@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UsersRound, Activity, Plus, X, ImagePlus } from 'lucide-react';
 import DataTable from '../components/DataTable';
 import { cn } from '../lib/utils';
@@ -9,6 +9,7 @@ import {
   getDocs,
   query,
   orderBy,
+  onSnapshot,
   Timestamp,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -65,21 +66,43 @@ export default function PeerGroups() {
   const [loadingGroups, setLoadingGroups] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchGroups = async () => {
-    try {
-      const q = query(collection(db, 'peer_groups'), orderBy('created_at', 'asc'));
-      const snapshot = await getDocs(q);
-      setFirestoreGroups(snapshot.docs.map(doc => doc.data() as FirestorePeerGroup));
-    } catch {
-      // Silently fail — Firestore groups are supplementary to the table
-    } finally {
-      setLoadingGroups(false);
-    }
-  };
-
   useEffect(() => {
-    fetchGroups();
+    const q = query(collection(db, 'peer_groups'), orderBy('created_at', 'asc'));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        setFirestoreGroups(snapshot.docs.map(doc => doc.data() as FirestorePeerGroup));
+        setLoadingGroups(false);
+      },
+      () => {
+        setLoadingGroups(false);
+      }
+    );
+    return () => unsubscribe();
   }, []);
+
+  const summaryStats = useMemo(() => {
+    const mostActive = [...dummyGroups].sort((a, b) => b.members - a.members)[0];
+    const needsAttention = dummyGroups.find(g => g.activityLevel === 'Low') ?? dummyGroups[dummyGroups.length - 1];
+
+    const newestGroup = firestoreGroups.length > 0
+      ? firestoreGroups[firestoreGroups.length - 1]
+      : null;
+
+    const fastestGrowing = newestGroup
+      ? { name: newestGroup.group_name, desc: 'Newest group — just added' }
+      : (() => {
+          const g = [...dummyGroups].sort((a, b) => b.members - a.members)[1];
+          return { name: g.name, desc: `${g.members} members` };
+        })();
+
+    const daysInactive = (() => {
+      if (newestGroup) return null;
+      return 3;
+    })();
+
+    return { mostActive, needsAttention, fastestGrowing, daysInactive };
+  }, [firestoreGroups]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -148,7 +171,6 @@ export default function PeerGroups() {
       });
 
       handleCloseModal();
-      await fetchGroups();
       setSuccessMessage(`Group "${groupName.trim()}" (${newId}) created successfully.`);
       setTimeout(() => setSuccessMessage(''), 5000);
     } catch {
@@ -244,18 +266,18 @@ export default function PeerGroups() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Most Active</p>
-          <h4 className="text-lg font-bold text-slate-900">Mindfulness Practice</h4>
-          <p className="text-xs text-slate-500 mt-1">1,240 messages in the last 24h</p>
+          <h4 className="text-lg font-bold text-slate-900">{summaryStats.mostActive.name}</h4>
+          <p className="text-xs text-slate-500 mt-1">{summaryStats.mostActive.members.toLocaleString()} members · High activity</p>
         </div>
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Fastest Growing</p>
-          <h4 className="text-lg font-bold text-slate-900">Post-Grad Life</h4>
-          <p className="text-xs text-slate-500 mt-1">+45% members this week</p>
+          <h4 className="text-lg font-bold text-slate-900">{summaryStats.fastestGrowing.name}</h4>
+          <p className="text-xs text-slate-500 mt-1">{summaryStats.fastestGrowing.desc}</p>
         </div>
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Needs Attention</p>
-          <h4 className="text-lg font-bold text-slate-900">Grief & Loss</h4>
-          <p className="text-xs text-slate-500 mt-1">Low activity detected (3 days)</p>
+          <h4 className="text-lg font-bold text-slate-900">{summaryStats.needsAttention.name}</h4>
+          <p className="text-xs text-slate-500 mt-1">Low activity detected ({summaryStats.daysInactive ?? 3} days)</p>
         </div>
       </div>
 

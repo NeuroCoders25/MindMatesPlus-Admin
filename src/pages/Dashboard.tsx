@@ -52,6 +52,14 @@ interface JournalDoc {
   date: Date;
 }
 
+interface MentalHealthDoc {
+  userId: string;
+  category: string;
+  mainCondition: string;
+  totalScore: number;
+  completedAt?: Date;
+}
+
 export default function Dashboard() {
   const { currentUser } = useAuth();
   const [adminName, setAdminName] = useState('Admin');
@@ -59,6 +67,7 @@ export default function Dashboard() {
   const [peerGroupCount, setPeerGroupCount] = useState(0);
   const [messagesToday, setMessagesToday] = useState(0);
   const [journalEntries, setJournalEntries] = useState<JournalDoc[]>([]);
+  const [mentalHealthProfiles, setMentalHealthProfiles] = useState<MentalHealthDoc[]>([]);
 
   // Admin display name
   useEffect(() => {
@@ -146,6 +155,36 @@ export default function Dashboard() {
     return unsub;
   }, []);
 
+  // Mental health profiles — drives distress count and alert panel
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collectionGroup(db, 'mentalHealthProfile'),
+      (snap) => {
+        setMentalHealthProfiles(
+          snap.docs
+            .map((d) => {
+              const userId = d.ref.parent.parent?.id ?? '';
+              const data = d.data();
+              const score = data.initialQuestionnaireScore as Record<string, unknown> | undefined;
+              return {
+                userId,
+                category:
+                  (data.activeRecommendationCategory as string | undefined) ||
+                  (score?.category as string | undefined) ||
+                  '',
+                mainCondition: (score?.mainCondition as string | undefined) || '',
+                totalScore: (score?.totalScore as number | undefined) || 0,
+                completedAt: toDate(score?.completedAt),
+              };
+            })
+            .filter((p) => p.userId && p.category)
+        );
+      },
+      (err) => console.error('Mental health profiles listener error:', err)
+    );
+    return unsub;
+  }, []);
+
   // uid → display name map (derived from users)
   const userNameMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -229,25 +268,40 @@ export default function Dashboard() {
     ];
   }, [journalEntries]);
 
-  // Distress alert count: entries with high-distress mood tags in the last 7 days
+  // Distress alert count: unique users with distress journal entries or severe mental health profiles
   const distressAlertCount = useMemo(() => {
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
-    return journalEntries.filter((e) => {
+    const alertUserIds = new Set<string>();
+
+    journalEntries.forEach((e) => {
       const mood = e.moodTag.toLowerCase();
-      return (
+      if (
         ['distressed', 'crisis', 'depressed', 'overwhelmed'].some((m) => mood.includes(m)) &&
         e.date >= weekAgo
-      );
-    }).length;
-  }, [journalEntries]);
+      ) {
+        alertUserIds.add(e.userId);
+      }
+    });
 
-  // Recent alerts panel: most recent distress/concern entries from journals
+    mentalHealthProfiles.forEach((p) => {
+      const cat = p.category.toLowerCase();
+      if (cat === 'extremely severe' || cat.includes('severe') || cat.includes('moderate')) {
+        alertUserIds.add(p.userId);
+      }
+    });
+
+    return alertUserIds.size;
+  }, [journalEntries, mentalHealthProfiles]);
+
+  // Recent alerts panel: most recent distress signals from journals + mental health profiles
   const recentAlerts = useMemo(() => {
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
 
-    return journalEntries
+    type SortableAlert = { id: string; type: 'critical' | 'warning'; user: string; message: string; time: string; _sort: number };
+
+    const journalAlerts: SortableAlert[] = journalEntries
       .filter((e) => {
         const mood = e.moodTag.toLowerCase();
         return (
@@ -255,8 +309,6 @@ export default function Dashboard() {
           e.date >= weekAgo
         );
       })
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
-      .slice(0, 5)
       .map((e) => {
         const mood = e.moodTag.toLowerCase();
         const isCritical = ['distressed', 'crisis', 'depressed'].some((m) => mood.includes(m));
@@ -267,9 +319,35 @@ export default function Dashboard() {
           user: userNameMap[e.userId] || 'Unknown User',
           message: `${isCritical ? 'High distress' : 'Concern'} detected in journal entry: "${preview}${preview.length < (e.title || e.content).length ? '...' : ''}"`,
           time: formatTimeAgo(e.date),
+          _sort: e.date.getTime(),
         };
       });
-  }, [journalEntries, userNameMap]);
+
+    const profileAlerts: SortableAlert[] = mentalHealthProfiles
+      .filter((p) => {
+        const cat = p.category.toLowerCase();
+        return cat === 'extremely severe' || cat.includes('severe') || cat.includes('moderate');
+      })
+      .map((p) => {
+        const cat = p.category.toLowerCase();
+        const isCritical = cat === 'extremely severe' || cat.includes('severe');
+        const condition = p.mainCondition ? ` — ${p.mainCondition}` : '';
+        const scoreText = p.totalScore > 0 ? ` (score: ${p.totalScore})` : '';
+        return {
+          id: `mhp-${p.userId}`,
+          type: isCritical ? ('critical' as const) : ('warning' as const),
+          user: userNameMap[p.userId] || 'Unknown User',
+          message: `${p.category} mental health assessment${condition}${scoreText}`,
+          time: p.completedAt ? formatTimeAgo(p.completedAt) : 'Recently',
+          _sort: p.completedAt?.getTime() ?? 0,
+        };
+      });
+
+    return [...journalAlerts, ...profileAlerts]
+      .sort((a, b) => b._sort - a._sort)
+      .slice(0, 5)
+      .map(({ _sort, ...alert }) => alert);
+  }, [journalEntries, mentalHealthProfiles, userNameMap]);
 
   return (
     <div className="space-y-8">
