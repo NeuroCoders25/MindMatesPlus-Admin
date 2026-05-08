@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, MoreVertical, Eye, ShieldAlert } from 'lucide-react';
+import { Search, Filter, MoreVertical, Eye, ShieldAlert, Trash2, X, AlertTriangle } from 'lucide-react';
 import { collection, collectionGroup, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import DataTable from '../components/DataTable';
@@ -70,6 +70,8 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [riskFilter, setRiskFilter] = useState('All Risk Levels');
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   useEffect(() => {
     const unsub = onSnapshot(
@@ -143,6 +145,19 @@ export default function UserManagement() {
     return matchesSearch && matchesRisk;
   });
 
+  const handleDeleteClick = (user: User) => {
+    setUserToDelete(user);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    // Backend implementation skipped as requested
+    console.log('Deleting user:', userToDelete?.id);
+    setIsDeleteModalOpen(false);
+    setUserToDelete(null);
+    // You could add a toast notification here if one exists in the project
+  };
+
   const columns = [
     { header: 'User ID', accessor: 'id' as keyof User, className: 'font-mono text-xs' },
     {
@@ -199,6 +214,13 @@ export default function UserManagement() {
             title="Suspend User"
           >
             <ShieldAlert className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => handleDeleteClick(user)}
+            className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
+            title="Remove User"
+          >
+            <Trash2 className="w-4 h-4" />
           </button>
           <button className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
             <MoreVertical className="w-4 h-4" />
@@ -260,6 +282,71 @@ export default function UserManagement() {
         </div>
       ) : (
         <DataTable columns={columns} data={filtered} />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && userToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+            onClick={() => setIsDeleteModalOpen(false)}
+          />
+          
+          <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+            {/* Header with Warning Icon */}
+            <div className="bg-rose-50 px-6 py-8 flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mb-4">
+                <AlertTriangle className="w-8 h-8 text-rose-600" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900">Remove User?</h3>
+              <p className="text-slate-500 mt-2 text-sm leading-relaxed">
+                Are you sure you want to remove <span className="font-bold text-slate-900">{userToDelete.name}</span>? 
+                This action will permanently delete their account and all associated data.
+              </p>
+            </div>
+
+            {/* User Detail Card */}
+            <div className="px-6 py-4 bg-slate-50 border-y border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 font-bold">
+                  {userToDelete.name.charAt(0)}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-900">{userToDelete.name}</p>
+                  <p className="text-xs text-slate-500">{userToDelete.email}</p>
+                </div>
+                <div className="ml-auto">
+                  <span className="text-[10px] font-mono bg-slate-200 px-2 py-0.5 rounded text-slate-600 uppercase">
+                    {userToDelete.id}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="p-6 flex items-center gap-3">
+              <button
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="flex-1 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-[0.98]"
+              >
+                Keep User
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="flex-1 px-4 py-2.5 bg-rose-600 rounded-xl text-sm font-bold text-white hover:bg-rose-700 shadow-lg shadow-rose-200 transition-all active:scale-[0.98]"
+              >
+                Remove Permanently
+              </button>
+            </div>
+
+            <button 
+              onClick={() => setIsDeleteModalOpen(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
