@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UsersRound, Activity, Plus, X, ImagePlus } from 'lucide-react';
 import DataTable from '../components/DataTable';
 import { cn } from '../lib/utils';
-import { db, storage } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import {
   collection,
   addDoc,
@@ -12,7 +12,7 @@ import {
   onSnapshot,
   Timestamp,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { uploadImageToImageKit } from '../services/imageUploadService';
 
 interface PeerGroup {
   id: string;
@@ -59,6 +59,7 @@ export default function PeerGroups() {
   const [groupDescription, setGroupDescription] = useState('');
   const [groupImage, setGroupImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -150,13 +151,15 @@ export default function PeerGroups() {
       let imageUrl = '';
       if (groupImage) {
         try {
-          const storageRef = ref(storage, `group_images/${newId}`);
-          await uploadBytes(storageRef, groupImage);
-          imageUrl = await getDownloadURL(storageRef);
+          setUploading(true);
+          imageUrl = await uploadImageToImageKit(groupImage, 'peer_groups');
         } catch {
           setModalError('Image upload failed. Please try again.');
           setSaving(false);
+          setUploading(false);
           return;
+        } finally {
+          setUploading(false);
         }
       }
 
@@ -474,13 +477,13 @@ export default function PeerGroups() {
               </button>
               <button
                 onClick={handleCreateGroup}
-                disabled={saving}
+                disabled={saving || uploading}
                 className={cn(
                   'flex-1 px-4 py-2.5 rounded-lg text-sm font-bold text-white transition-colors',
-                  saving ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
+                  saving || uploading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
                 )}
               >
-                {saving ? 'Creating...' : 'Create Group'}
+                {uploading ? 'Uploading...' : saving ? 'Creating...' : 'Create Group'}
               </button>
             </div>
           </div>
