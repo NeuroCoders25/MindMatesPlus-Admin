@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { UsersRound, Activity, Plus, X, ImagePlus } from 'lucide-react';
+import { UsersRound, Activity, Plus, X, ImagePlus, Trash2, AlertTriangle } from 'lucide-react';
 import DataTable from '../components/DataTable';
 import { cn } from '../lib/utils';
 import { db } from '../lib/firebase';
@@ -11,6 +11,8 @@ import {
   orderBy,
   onSnapshot,
   Timestamp,
+  deleteDoc,
+  doc,
 } from 'firebase/firestore';
 import { uploadImageToImageKit } from '../services/imageUploadService';
 
@@ -25,6 +27,7 @@ interface PeerGroup {
 }
 
 interface FirestorePeerGroup {
+  docId: string;
   group_id: string;
   group_name: string;
   group_category: string;
@@ -65,6 +68,9 @@ export default function PeerGroups() {
   const [successMessage, setSuccessMessage] = useState('');
   const [firestoreGroups, setFirestoreGroups] = useState<FirestorePeerGroup[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(true);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [groupToDelete, setGroupToDelete] = useState<FirestorePeerGroup | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -72,7 +78,7 @@ export default function PeerGroups() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        setFirestoreGroups(snapshot.docs.map(doc => doc.data() as FirestorePeerGroup));
+        setFirestoreGroups(snapshot.docs.map(d => ({ ...d.data(), docId: d.id } as FirestorePeerGroup)));
         setLoadingGroups(false);
       },
       () => {
@@ -116,6 +122,34 @@ export default function PeerGroups() {
     setGroupImage(null);
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleDeleteClick = (group: FirestorePeerGroup) => {
+    setGroupToDelete(group);
+    setShowDeleteModal(true);
+  };
+
+  const handleCloseDeleteModal = () => {
+    if (deleting) return;
+    setShowDeleteModal(false);
+    setGroupToDelete(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!groupToDelete) return;
+    setDeleting(true);
+    try {
+      await deleteDoc(doc(db, 'peer_groups', groupToDelete.docId));
+      setShowDeleteModal(false);
+      setGroupToDelete(null);
+      setSuccessMessage(`Group "${groupToDelete.group_name}" has been deleted.`);
+      setTimeout(() => setSuccessMessage(''), 5000);
+    } catch {
+      setShowDeleteModal(false);
+      setGroupToDelete(null);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleOpenModal = () => {
@@ -260,7 +294,7 @@ export default function PeerGroups() {
       {/* Success message */}
       {successMessage && (
         <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-xl text-sm font-medium">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
           {successMessage}
         </div>
       )}
@@ -317,10 +351,10 @@ export default function PeerGroups() {
                   <img
                     src={group.group_image_url}
                     alt={group.group_name}
-                    className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-slate-200"
+                    className="w-10 h-10 rounded-lg object-cover shrink-0 border border-slate-200"
                   />
                 ) : (
-                  <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0 border border-slate-200">
+                  <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0 border border-slate-200">
                     <UsersRound className="w-5 h-5 text-indigo-300" />
                   </div>
                 )}
@@ -333,10 +367,19 @@ export default function PeerGroups() {
                   )}
                 </div>
 
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-600 uppercase tracking-wider whitespace-nowrap flex-shrink-0">
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-600 uppercase tracking-wider whitespace-nowrap shrink-0">
                   {group.group_category}
                 </span>
+
+                <button
+                  onClick={() => handleDeleteClick(group)}
+                  className="p-2 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors shrink-0"
+                  title="Delete group"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
+
             ))}
           </div>
         )}
@@ -344,6 +387,68 @@ export default function PeerGroups() {
 
       {/* All groups data table */}
       <DataTable columns={columns} data={dummyGroups} />
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && groupToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            onClick={handleCloseDeleteModal}
+          />
+          <div className="relative bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm p-6 space-y-5">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-rose-500" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Delete Group</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">This action cannot be undone.</p>
+                </div>
+              </div>
+              <button
+                onClick={handleCloseDeleteModal}
+                disabled={deleting}
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors -mt-1 -mr-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-rose-50 border border-rose-100 rounded-xl px-4 py-3">
+              <p className="text-sm font-bold text-slate-800">{groupToDelete.group_name}</p>
+              <p className="text-xs text-slate-500 font-mono mt-0.5">{groupToDelete.group_id}</p>
+              {groupToDelete.group_description && (
+                <p className="text-xs text-slate-500 mt-1">{groupToDelete.group_description}</p>
+              )}
+            </div>
+
+            <p className="text-sm text-slate-600">
+              Are you sure you want to permanently delete this group? All group data will be removed from the database.
+            </p>
+
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                onClick={handleCloseDeleteModal}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className={cn(
+                  'flex-1 px-4 py-2.5 rounded-lg text-sm font-bold text-white transition-colors',
+                  deleting ? 'bg-rose-400 cursor-not-allowed' : 'bg-rose-600 hover:bg-rose-700'
+                )}
+              >
+                {deleting ? 'Deleting...' : 'Delete Group'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Group Modal */}
       {showModal && (
