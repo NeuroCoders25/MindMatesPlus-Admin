@@ -85,7 +85,7 @@ export default function UserManagement() {
           return {
             _docId: doc.id,
             id: doc.id.slice(0, 8).toUpperCase(),
-            name: data.displayName ?? data.name ?? 'Unknown',
+            name: data.nickname ?? data.displayName ?? data.name ?? 'Unknown',
             email: data.email ?? '',
             _rawRiskLevel: data.riskLevel ?? data.risk_level,
             peerGroup: data.peerGroup ?? data.peer_group ?? '—',

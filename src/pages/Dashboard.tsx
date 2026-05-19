@@ -93,7 +93,7 @@ export default function Dashboard() {
             const data = d.data();
             return {
               id: d.id,
-              name: data.displayName || data.name,
+              name: data.nickname || data.displayName || data.name,
               email: data.email,
               createdAt: toDate(data.createdAt ?? data.created_at),
             };
