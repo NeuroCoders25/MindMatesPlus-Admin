@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { UsersRound, Activity, Plus, X, ImagePlus, Trash2, AlertTriangle } from 'lucide-react';
+import { UsersRound, Activity, Plus, X, ImagePlus, Trash2, AlertTriangle, Pencil } from 'lucide-react';
 import DataTable from '../components/DataTable';
 import { cn } from '../lib/utils';
 import { db } from '../lib/firebase';
@@ -13,6 +13,7 @@ import {
   Timestamp,
   deleteDoc,
   doc,
+  updateDoc,
 } from 'firebase/firestore';
 import { uploadImageToImageKit } from '../services/imageUploadService';
 
@@ -33,8 +34,14 @@ interface FirestorePeerGroup {
   group_category: string;
   group_description: string;
   group_image_url: string;
+  group_moderator: string;
   created_at: Timestamp;
   updated_at: Timestamp;
+}
+
+interface ModeratorOption {
+  uid: string;
+  name: string;
 }
 
 const GROUP_CATEGORIES = [
@@ -56,10 +63,12 @@ const dummyGroups: PeerGroup[] = [
 ];
 
 export default function PeerGroups() {
+  // Create modal state
   const [showModal, setShowModal] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [groupCategory, setGroupCategory] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
+  const [groupModerator, setGroupModerator] = useState('');
   const [groupImage, setGroupImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -72,6 +81,22 @@ export default function PeerGroups() {
   const [groupToDelete, setGroupToDelete] = useState<FirestorePeerGroup | null>(null);
   const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Edit modal state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<FirestorePeerGroup | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editModerator, setEditModerator] = useState('');
+  const [editImage, setEditImage] = useState<File | null>(null);
+  const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
+  const [editUploading, setEditUploading] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  // Moderators list from Firestore advisors
+  const [moderators, setModerators] = useState<ModeratorOption[]>([]);
 
   useEffect(() => {
     const q = query(collection(db, 'peer_groups'), orderBy('created_at', 'asc'));
@@ -85,6 +110,20 @@ export default function PeerGroups() {
         setLoadingGroups(false);
       }
     );
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'advisors'), (snapshot) => {
+      const list: ModeratorOption[] = snapshot.docs.map((d) => {
+        const data = d.data();
+        return {
+          uid: d.id,
+          name: data.name ?? data.displayName ?? data.email ?? d.id,
+        };
+      });
+      setModerators(list);
+    });
     return () => unsubscribe();
   }, []);
 
@@ -162,6 +201,7 @@ export default function PeerGroups() {
     setGroupName('');
     setGroupCategory('');
     setGroupDescription('');
+    setGroupModerator('');
     setGroupImage(null);
     setImagePreview(null);
     setModalError('');
@@ -203,6 +243,7 @@ export default function PeerGroups() {
         group_category: groupCategory,
         group_description: groupDescription.trim(),
         group_image_url: imageUrl,
+        group_moderator: groupModerator,
         created_at: now,
         updated_at: now,
       });
@@ -214,6 +255,80 @@ export default function PeerGroups() {
       setModalError('Failed to save the group. Please try again.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleEditClick = (group: FirestorePeerGroup) => {
+    setEditingGroup(group);
+    setEditName(group.group_name);
+    setEditDescription(group.group_description ?? '');
+    setEditModerator(group.group_moderator ?? '');
+    setEditImage(null);
+    setEditImagePreview(group.group_image_url || null);
+    setEditError('');
+    setShowEditModal(true);
+  };
+
+  const handleCloseEditModal = () => {
+    if (editSaving || editUploading) return;
+    setShowEditModal(false);
+    setEditingGroup(null);
+    setEditImage(null);
+    setEditImagePreview(null);
+    if (editFileInputRef.current) editFileInputRef.current.value = '';
+  };
+
+  const handleEditImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setEditImage(file);
+    setEditImagePreview(URL.createObjectURL(file));
+  };
+
+  const handleRemoveEditImage = () => {
+    setEditImage(null);
+    setEditImagePreview(null);
+    if (editFileInputRef.current) editFileInputRef.current.value = '';
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingGroup || !editName.trim()) {
+      setEditError('Group name is required.');
+      return;
+    }
+    setEditSaving(true);
+    setEditError('');
+    try {
+      let imageUrl = editingGroup.group_image_url;
+      if (editImage) {
+        try {
+          setEditUploading(true);
+          imageUrl = await uploadImageToImageKit(editImage, 'peer_groups');
+        } catch {
+          setEditError('Image upload failed. Please try again.');
+          setEditSaving(false);
+          setEditUploading(false);
+          return;
+        } finally {
+          setEditUploading(false);
+        }
+      } else if (!editImagePreview) {
+        imageUrl = '';
+      }
+      await updateDoc(doc(db, 'peer_groups', editingGroup.docId), {
+        group_name: editName.trim(),
+        group_description: editDescription.trim(),
+        group_image_url: imageUrl,
+        group_moderator: editModerator,
+        updated_at: Timestamp.now(),
+      });
+      handleCloseEditModal();
+      setSuccessMessage(`Group "${editName.trim()}" updated successfully.`);
+      setTimeout(() => setSuccessMessage(''), 5000);
+    } catch {
+      setEditError('Failed to save changes. Please try again.');
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -344,7 +459,8 @@ export default function PeerGroups() {
             {firestoreGroups.map((group) => (
               <div
                 key={group.group_id}
-                className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50 transition-colors"
+                className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                onClick={() => handleEditClick(group)}
               >
                 {/* Group image thumbnail */}
                 {group.group_image_url ? (
@@ -365,6 +481,9 @@ export default function PeerGroups() {
                   {group.group_description && (
                     <p className="text-xs text-slate-500 mt-0.5 truncate">{group.group_description}</p>
                   )}
+                  {group.group_moderator && (
+                    <p className="text-xs text-indigo-500 mt-0.5">Moderator: {group.group_moderator}</p>
+                  )}
                 </div>
 
                 <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-600 uppercase tracking-wider whitespace-nowrap shrink-0">
@@ -372,14 +491,21 @@ export default function PeerGroups() {
                 </span>
 
                 <button
-                  onClick={() => handleDeleteClick(group)}
+                  onClick={(e) => { e.stopPropagation(); handleEditClick(group); }}
+                  className="p-2 rounded-lg text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 transition-colors shrink-0"
+                  title="Edit group"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDeleteClick(group); }}
                   className="p-2 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors shrink-0"
                   title="Delete group"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
-
             ))}
           </div>
         )}
@@ -450,6 +576,149 @@ export default function PeerGroups() {
         </div>
       )}
 
+      {/* Edit Group Modal */}
+      {showEditModal && editingGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            onClick={handleCloseEditModal}
+          />
+          <div className="relative bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Edit Group</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Update group info — <span className="font-medium">{editingGroup.group_id}</span>
+                </p>
+              </div>
+              <button
+                onClick={handleCloseEditModal}
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors -mt-1 -mr-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">
+                {editError}
+              </div>
+            )}
+
+            {/* Read-only category badge */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Group Category</label>
+              <div className="px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-500 select-none">
+                {editingGroup.group_category}
+              </div>
+            </div>
+
+            {/* Group Name */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Group Name <span className="text-rose-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300 transition-colors"
+              />
+            </div>
+
+            {/* Group Moderator */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Group Admin (Moderator)
+                <span className="ml-1 text-slate-400 font-normal normal-case">(optional)</span>
+              </label>
+              <select
+                value={editModerator}
+                onChange={(e) => setEditModerator(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300 transition-colors"
+              >
+                <option value="">Select a moderator...</option>
+                {moderators.map((m) => (
+                  <option key={m.uid} value={m.name}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Group Description */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Group Description
+                <span className="ml-1 text-slate-400 font-normal normal-case">(optional)</span>
+              </label>
+              <textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                rows={3}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300 transition-colors"
+              />
+            </div>
+
+            {/* Group Image */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Group Image
+                <span className="ml-1 text-slate-400 font-normal normal-case">(optional)</span>
+              </label>
+              {editImagePreview ? (
+                <div className="relative w-full h-36 rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+                  <img src={editImagePreview} alt="Preview" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={handleRemoveEditImage}
+                    className="absolute top-2 right-2 p-1 bg-white/90 hover:bg-white rounded-full shadow text-slate-600 hover:text-rose-600 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => editFileInputRef.current?.click()}
+                  className="w-full h-24 border-2 border-dashed border-slate-200 rounded-lg flex flex-col items-center justify-center gap-1.5 text-slate-400 hover:border-indigo-300 hover:text-indigo-500 transition-colors bg-slate-50 hover:bg-indigo-50/30"
+                >
+                  <ImagePlus className="w-5 h-5" />
+                  <span className="text-xs font-medium">Click to upload image</span>
+                  <span className="text-[10px]">PNG, JPG, WEBP up to 5MB</span>
+                </button>
+              )}
+              <input
+                ref={editFileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={handleEditImageChange}
+                className="hidden"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                onClick={handleCloseEditModal}
+                disabled={editSaving || editUploading}
+                className="flex-1 px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={editSaving || editUploading}
+                className={cn(
+                  'flex-1 px-4 py-2.5 rounded-lg text-sm font-bold text-white transition-colors',
+                  editSaving || editUploading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
+                )}
+              >
+                {editUploading ? 'Uploading...' : editSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Create Group Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -510,6 +779,24 @@ export default function PeerGroups() {
                 <option value="">Select a category...</option>
                 {GROUP_CATEGORIES.map((cat) => (
                   <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Group Moderator */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Group Admin (Moderator)
+                <span className="ml-1 text-slate-400 font-normal normal-case">(optional)</span>
+              </label>
+              <select
+                value={groupModerator}
+                onChange={(e) => setGroupModerator(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300 transition-colors"
+              >
+                <option value="">Select a moderator...</option>
+                {moderators.map((m) => (
+                  <option key={m.uid} value={m.name}>{m.name}</option>
                 ))}
               </select>
             </div>
