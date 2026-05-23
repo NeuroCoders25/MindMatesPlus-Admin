@@ -22,7 +22,7 @@ interface Advisor {
   id: string;
   name: string;
   email: string;
-  avatar?: string;
+  profileImageUrl?: string;
   specialization: string;
   status: 'online' | 'offline';
   lastSeen?: any;
@@ -184,9 +184,26 @@ export default function AdvisorChat() {
                     )}
                   >
                     <div className="relative">
+                      {advisor.profileImageUrl ? (
+                        <img
+                          src={advisor.profileImageUrl}
+                          alt={advisor.name}
+                          className={cn(
+                            "w-12 h-12 rounded-2xl object-cover transition-transform duration-300 group-hover:scale-105 ring-2",
+                            selectedAdvisor?.id === advisor.id ? "ring-indigo-600" : "ring-slate-200"
+                          )}
+                          onError={(e) => {
+                            // Hide broken image and show fallback
+                            (e.currentTarget as HTMLImageElement).style.display = 'none';
+                            const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
+                        />
+                      ) : null}
                       <div className={cn(
                         "w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-bold transition-transform duration-300 group-hover:scale-105",
-                        selectedAdvisor?.id === advisor.id ? "bg-indigo-600 text-white" : "bg-indigo-100 text-indigo-600"
+                        selectedAdvisor?.id === advisor.id ? "bg-indigo-600 text-white" : "bg-indigo-100 text-indigo-600",
+                        advisor.profileImageUrl ? "hidden" : "flex"
                       )}>
                         {advisor.name?.charAt(0) || '?'}
                       </div>
@@ -225,8 +242,27 @@ export default function AdvisorChat() {
             {/* Chat Header */}
             <div className="px-8 py-5 border-b border-slate-100 flex items-center justify-between bg-white/80 backdrop-blur-md z-10">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl font-black shadow-lg shadow-indigo-100">
-                   {selectedAdvisor.name?.charAt(0) || '?'}
+                <div className="w-12 h-12 rounded-2xl shadow-lg shadow-indigo-100 overflow-hidden flex-shrink-0">
+                  {selectedAdvisor.profileImageUrl ? (
+                    <img
+                      src={selectedAdvisor.profileImageUrl}
+                      alt={selectedAdvisor.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                        const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                        if (fallback) fallback.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
+                  <div
+                    className={cn(
+                      "w-full h-full bg-gradient-to-br from-indigo-500 to-purple-600 items-center justify-center text-white text-xl font-black",
+                      selectedAdvisor.profileImageUrl ? "hidden" : "flex"
+                    )}
+                  >
+                    {selectedAdvisor.name?.charAt(0) || '?'}
+                  </div>
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 leading-tight">{selectedAdvisor.name}</h3>

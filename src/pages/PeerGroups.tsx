@@ -98,6 +98,14 @@ export default function PeerGroups() {
   // Moderators list from Firestore advisors
   const [moderators, setModerators] = useState<ModeratorOption[]>([]);
 
+  // Real member counts per group_id from groupMembers collection
+  const [groupMemberCounts, setGroupMemberCounts] = useState<Record<string, number>>({});
+
+  // Real message/chat activity counts per group_id from advisorGroupPrivateChats
+  const [groupMessageCounts, setGroupMessageCounts] = useState<Record<string, number>>({});
+  // Timestamp of most recent message per group_id
+  const [groupLastMessageAt, setGroupLastMessageAt] = useState<Record<string, number>>({});
+
   useEffect(() => {
     const q = query(collection(db, 'peer_groups'), orderBy('created_at', 'asc'));
     const unsubscribe = onSnapshot(
@@ -115,40 +123,127 @@ export default function PeerGroups() {
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'advisors'), (snapshot) => {
-      const list: ModeratorOption[] = snapshot.docs.map((d) => {
-        const data = d.data();
-        return {
-          uid: d.id,
-          name: data.name ?? data.displayName ?? data.email ?? d.id,
-        };
-      });
+      const list: ModeratorOption[] = snapshot.docs
+        .filter((d) => d.data().isModerator === true)
+        .map((d) => {
+          const data = d.data();
+          return {
+            uid: d.id,
+            name: data.name ?? data.displayName ?? data.email ?? d.id,
+          };
+        });
       setModerators(list);
     });
     return () => unsubscribe();
   }, []);
 
-  const summaryStats = useMemo(() => {
-    const mostActive = [...dummyGroups].sort((a, b) => b.members - a.members)[0];
-    const needsAttention = dummyGroups.find(g => g.activityLevel === 'Low') ?? dummyGroups[dummyGroups.length - 1];
+  // Subscribe to groupMembers to get real member counts per group
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'groupMembers'), (snapshot) => {
+      const counts: Record<string, number> = {};
+      snapshot.docs.forEach((d) => {
+        const data = d.data();
+        const gid = data.group_id ?? data.groupId ?? data.peer_group_id;
+        if (gid) counts[gid] = (counts[gid] ?? 0) + 1;
+      });
+      setGroupMemberCounts(counts);
+    });
+    return () => unsubscribe();
+  }, []);
 
-    const newestGroup = firestoreGroups.length > 0
-      ? firestoreGroups[firestoreGroups.length - 1]
+  // Subscribe to advisorGroupPrivateChats for real message activity per group
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'advisorGroupPrivateChats'), (snapshot) => {
+      const counts: Record<string, number> = {};
+      const lastAt: Record<string, number> = {};
+      snapshot.docs.forEach((d) => {
+        const data = d.data();
+        // group_id stored as field, or fall back to the document id itself
+        const gid = data.group_id ?? data.groupId ?? data.peer_group_id ?? d.id;
+        if (!gid) return;
+        counts[gid] = (counts[gid] ?? 0) + 1;
+        // Track most recent message timestamp for activity recency
+        const msgTs: number =
+          data.lastMessageAt?.toMillis?.() ??
+          data.createdAt?.toMillis?.() ??
+          data.timestamp?.toMillis?.() ??
+          0;
+        if (msgTs > (lastAt[gid] ?? 0)) lastAt[gid] = msgTs;
+      });
+      setGroupMessageCounts(counts);
+      setGroupLastMessageAt(lastAt);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const summaryStats = useMemo(() => {
+    if (firestoreGroups.length === 0) return null;
+
+    const now = Date.now();
+    const thirtyDaysAgo = now - 30 * 86_400_000;
+
+    // Enrich every group with real member count + real message activity
+    const enriched = firestoreGroups.map((g) => ({
+      ...g,
+      memberCount: groupMemberCounts[g.group_id] ?? 0,
+      messageCount: groupMessageCounts[g.group_id] ?? 0,
+      lastMsgMs: groupLastMessageAt[g.group_id] ?? 0,
+    }));
+
+    // ── Most Active ───────────────────────────────────────────────────────────
+    // Rank by message count first (real engagement), then member count.
+    // Groups with 0 members AND 0 messages are excluded from this slot.
+    const engagedGroups = enriched.filter((g) => g.memberCount > 0 || g.messageCount > 0);
+    const mostActive = engagedGroups.length > 0
+      ? [...engagedGroups].sort((a, b) =>
+          b.messageCount !== a.messageCount
+            ? b.messageCount - a.messageCount
+            : b.memberCount - a.memberCount
+        )[0]
       : null;
 
-    const fastestGrowing = newestGroup
-      ? { name: newestGroup.group_name, desc: 'Newest group — just added' }
-      : (() => {
-          const g = [...dummyGroups].sort((a, b) => b.members - a.members)[1];
-          return { name: g.name, desc: `${g.members} members` };
-        })();
+    // ── Fastest Growing ───────────────────────────────────────────────────────
+    // Among groups that actually have members, prefer those created recently
+    // (last 30 days) with the most members = fastest accumulation.
+    // If no group has members at all, fall back to null.
+    const groupsWithMembers = enriched.filter((g) => g.memberCount > 0);
+    const recentWithMembers = groupsWithMembers.filter(
+      (g) => (g.created_at?.toMillis?.() ?? 0) >= thirtyDaysAgo
+    );
+    const fastestPool = recentWithMembers.length > 0 ? recentWithMembers : groupsWithMembers;
+    const fastestGrowing = fastestPool.length > 0
+      ? [...fastestPool].sort((a, b) => b.memberCount - a.memberCount)[0]
+      : null;
+    const fastestCreatedMs = fastestGrowing?.created_at?.toMillis?.() ?? now;
+    const fastestDaysAgo = Math.floor((now - fastestCreatedMs) / 86_400_000);
 
-    const daysInactive = (() => {
-      if (newestGroup) return null;
-      return 3;
-    })();
+    // ── Needs Attention ───────────────────────────────────────────────────────
+    // Lowest composite score: 0-member and 0-message groups rank first.
+    // Among ties, oldest last-activity timestamp wins (most neglected).
+    const needsAttention = [...enriched].sort((a, b) => {
+      const scoreA = a.memberCount * 10 + a.messageCount;
+      const scoreB = b.memberCount * 10 + b.messageCount;
+      if (scoreA !== scoreB) return scoreA - scoreB;
+      const aLastMs = a.lastMsgMs || a.updated_at?.toMillis?.() || a.created_at?.toMillis?.() || 0;
+      const bLastMs = b.lastMsgMs || b.updated_at?.toMillis?.() || b.created_at?.toMillis?.() || 0;
+      return aLastMs - bLastMs;
+    })[0];
 
-    return { mostActive, needsAttention, fastestGrowing, daysInactive };
-  }, [firestoreGroups]);
+    const attentionLastMs =
+      needsAttention.lastMsgMs ||
+      needsAttention.updated_at?.toMillis?.() ||
+      needsAttention.created_at?.toMillis?.() ||
+      now;
+    const daysInactive = Math.floor((now - attentionLastMs) / 86_400_000);
+
+    return {
+      mostActive,
+      fastestGrowing,
+      fastestDaysAgo,
+      needsAttention,
+      daysInactive,
+    };
+  }, [firestoreGroups, groupMemberCounts, groupMessageCounts, groupLastMessageAt]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -416,21 +511,79 @@ export default function PeerGroups() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Most Active</p>
-          <h4 className="text-lg font-bold text-slate-900">{summaryStats.mostActive.name}</h4>
-          <p className="text-xs text-slate-500 mt-1">{summaryStats.mostActive.members.toLocaleString()} members · High activity</p>
-        </div>
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Fastest Growing</p>
-          <h4 className="text-lg font-bold text-slate-900">{summaryStats.fastestGrowing.name}</h4>
-          <p className="text-xs text-slate-500 mt-1">{summaryStats.fastestGrowing.desc}</p>
-        </div>
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Needs Attention</p>
-          <h4 className="text-lg font-bold text-slate-900">{summaryStats.needsAttention.name}</h4>
-          <p className="text-xs text-slate-500 mt-1">Low activity detected ({summaryStats.daysInactive ?? 3} days)</p>
-        </div>
+        {loadingGroups ? (
+          [1, 2, 3].map((i) => (
+            <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm animate-pulse">
+              <div className="h-2.5 bg-slate-100 rounded w-20 mb-3" />
+              <div className="h-5 bg-slate-200 rounded w-40 mb-2" />
+              <div className="h-2.5 bg-slate-100 rounded w-32" />
+            </div>
+          ))
+        ) : summaryStats ? (
+          <>
+            {/* Most Active */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Most Active</p>
+              {summaryStats.mostActive ? (
+                <>
+                  <h4 className="text-lg font-bold text-slate-900">{summaryStats.mostActive.group_name}</h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {summaryStats.mostActive.messageCount} message{summaryStats.mostActive.messageCount !== 1 ? 's' : ''}
+                    {' · '}
+                    {summaryStats.mostActive.memberCount} member{summaryStats.mostActive.memberCount !== 1 ? 's' : ''}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h4 className="text-lg font-bold text-slate-400 italic">No activity yet</h4>
+                  <p className="text-xs text-slate-400 mt-1">Groups need members to rank here</p>
+                </>
+              )}
+            </div>
+
+            {/* Fastest Growing */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Fastest Growing</p>
+              {summaryStats.fastestGrowing ? (
+                <>
+                  <h4 className="text-lg font-bold text-slate-900">{summaryStats.fastestGrowing.group_name}</h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {summaryStats.fastestDaysAgo === 0
+                      ? 'Created today'
+                      : summaryStats.fastestDaysAgo === 1
+                      ? 'Created yesterday'
+                      : `Created ${summaryStats.fastestDaysAgo} days ago`}
+                    {' · '}
+                    {summaryStats.fastestGrowing.memberCount} member{summaryStats.fastestGrowing.memberCount !== 1 ? 's' : ''}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h4 className="text-lg font-bold text-slate-400 italic">No members yet</h4>
+                  <p className="text-xs text-slate-400 mt-1">Invite users to groups to track growth</p>
+                </>
+              )}
+            </div>
+
+            {/* Needs Attention */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Needs Attention</p>
+              <h4 className="text-lg font-bold text-slate-900">{summaryStats.needsAttention.group_name}</h4>
+              <p className="text-xs text-slate-500 mt-1">
+                {summaryStats.needsAttention.memberCount} member{summaryStats.needsAttention.memberCount !== 1 ? 's' : ''}
+                {' · '}
+                {summaryStats.needsAttention.messageCount === 0
+                  ? 'No messages yet'
+                  : `${summaryStats.needsAttention.messageCount} message${summaryStats.needsAttention.messageCount !== 1 ? 's' : ''}`}
+                {summaryStats.daysInactive > 0 && ` · inactive ${summaryStats.daysInactive} day${summaryStats.daysInactive !== 1 ? 's' : ''}`}
+              </p>
+            </div>
+          </>
+        ) : (
+          <div className="col-span-3 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center text-sm text-slate-400">
+            No groups yet — create one to see analytics.
+          </div>
+        )}
       </div>
 
       {/* Firestore-created groups list */}
