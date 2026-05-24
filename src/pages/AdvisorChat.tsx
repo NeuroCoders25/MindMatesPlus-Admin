@@ -1,22 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Search, 
-  Send, 
-  User, 
-  MoreVertical, 
-  Phone, 
-  Video, 
-  MessageSquare
+import {
+  Search,
+  Send,
+  User,
+  MoreVertical,
+  Phone,
+  Video,
+  MessageSquare,
+  ExternalLink
 } from 'lucide-react';
-import { 
-  collection, 
-  query, 
-  onSnapshot, 
+import {
+  collection,
+  query,
+  onSnapshot,
 } from 'firebase/firestore';
 import { db as firestoreDb } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { chatService, ChatMessage, PrivateChat } from '../services/chatService';
+import { useNavigate } from 'react-router-dom';
 
 interface Advisor {
   id: string;
@@ -30,6 +32,7 @@ interface Advisor {
 
 export default function AdvisorChat() {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const [advisors, setAdvisors] = useState<Advisor[]>([]);
   const [selectedAdvisor, setSelectedAdvisor] = useState<Advisor | null>(null);
   const [chats, setChats] = useState<PrivateChat[]>([]);
@@ -278,6 +281,14 @@ export default function AdvisorChat() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                <button
+                  onClick={() => navigate(`/advisor-profile/${selectedAdvisor.id}`)}
+                  title="View Profile"
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  View Profile
+                </button>
                 <button className="p-2.5 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-indigo-600 transition-all">
                   <Phone className="w-5 h-5" />
                 </button>

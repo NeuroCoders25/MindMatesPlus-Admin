@@ -21,6 +21,8 @@ import AIInsights from './pages/AIInsights';
 import Reports from './pages/Reports';
 import Feedback from './pages/Feedback';
 import Settings from './pages/Settings';
+import AdvisorProfile from './pages/AdvisorProfile';
+import AdminProfile from './pages/AdminProfile';
 
 function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -65,6 +67,8 @@ export default function App() {
                     <Route path="/reports" element={<Reports />} />
                     <Route path="/feedback" element={<Feedback />} />
                     <Route path="/settings" element={<Settings />} />
+                    <Route path="/advisor-profile/:id" element={<AdvisorProfile />} />
+                    <Route path="/admin-profile" element={<AdminProfile />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </DashboardLayout>
