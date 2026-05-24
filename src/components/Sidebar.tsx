@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
@@ -38,9 +38,13 @@ const navItems = [
 
 export default function Sidebar() {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const displayName = currentUser?.displayName || currentUser?.email || 'Admin';
   const email = currentUser?.email || '';
   const initials = getInitials(displayName);
+  const uid = currentUser?.uid || '';
+  const photoURL = currentUser?.photoURL ||
+    `https://api.dicebear.com/9.x/avataaars/png?seed=${uid}&size=200`;
 
   return (
     // Fixed-height sidebar that stays visible while main content scrolls.
@@ -74,20 +78,29 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Admin identity footer section */}
+      {/* Admin identity footer section — clicking opens admin profile */}
       <div className="p-4 border-t border-[#334270]">
-        <div className="bg-white/10 rounded-xl p-4">
+        <button
+          onClick={() => navigate('/admin-profile')}
+          className="w-full bg-white/10 hover:bg-white/20 rounded-xl p-4 transition-colors text-left"
+        >
           <p className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3 text-center">Admin Mode</p>
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-400 to-purple-400 flex items-center justify-center text-white text-xs font-bold shrink-0">
-              {initials}
-            </div>
+            <img
+              src={photoURL}
+              alt="Admin"
+              className="w-8 h-8 rounded-full object-cover shrink-0 border border-white/20"
+              onError={e => {
+                (e.currentTarget as HTMLImageElement).src =
+                  `https://api.dicebear.com/9.x/initials/png?seed=${encodeURIComponent(initials)}&size=200`;
+              }}
+            />
             <div className="overflow-hidden">
               <p className="text-sm font-medium text-white truncate">Administrator</p>
               <p className="text-xs text-white/50 truncate">{email}</p>
             </div>
           </div>
-        </div>
+        </button>
       </div>
     </aside>
   );
