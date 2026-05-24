@@ -176,6 +176,34 @@ export default function PeerGroups() {
     return () => unsubscribe();
   }, []);
 
+  const tableGroups = useMemo((): PeerGroup[] => {
+    const now = Date.now();
+    return firestoreGroups.map((g) => {
+      const memberCount = groupMemberCounts[g.group_id] ?? 0;
+      const messageCount = groupMessageCounts[g.group_id] ?? 0;
+      const lastMsgMs = groupLastMessageAt[g.group_id] ?? 0;
+      const daysSinceMsg = lastMsgMs > 0 ? Math.floor((now - lastMsgMs) / 86_400_000) : Infinity;
+
+      let activityLevel: 'High' | 'Medium' | 'Low';
+      if (messageCount >= 5 && daysSinceMsg <= 14) activityLevel = 'High';
+      else if (messageCount >= 1 && daysSinceMsg <= 30) activityLevel = 'Medium';
+      else activityLevel = 'Low';
+
+      const moderatorEntry = moderators.find((m) => m.uid === g.group_moderator);
+      const moderatorName = moderatorEntry?.name ?? g.group_moderator ?? 'Auto-Mod';
+
+      return {
+        id: g.group_id,
+        name: g.group_name,
+        category: g.group_category,
+        members: memberCount,
+        activityLevel,
+        moderator: moderatorName || 'Auto-Mod',
+        status: 'Active',
+      };
+    });
+  }, [firestoreGroups, groupMemberCounts, groupMessageCounts, groupLastMessageAt, moderators]);
+
   const summaryStats = useMemo(() => {
     if (firestoreGroups.length === 0) return null;
 
@@ -475,8 +503,14 @@ export default function PeerGroups() {
     },
     {
       header: 'Actions',
-      accessor: () => (
-        <button className="text-indigo-600 hover:text-indigo-800 text-xs font-bold uppercase tracking-wider">
+      accessor: (group: PeerGroup) => (
+        <button
+          onClick={() => {
+            const fg = firestoreGroups.find((g) => g.group_id === group.id);
+            if (fg) handleEditClick(fg);
+          }}
+          className="text-indigo-600 hover:text-indigo-800 text-xs font-bold uppercase tracking-wider"
+        >
           Manage
         </button>
       ),
@@ -665,7 +699,13 @@ export default function PeerGroups() {
       </div>
 
       {/* All groups data table */}
-      <DataTable columns={columns} data={dummyGroups} />
+      {loadingGroups ? (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-6 py-8 text-center text-sm text-slate-400">
+          Loading groups...
+        </div>
+      ) : (
+        <DataTable columns={columns} data={tableGroups} />
+      )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && groupToDelete && (
