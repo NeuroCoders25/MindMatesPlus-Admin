@@ -39,7 +39,8 @@ export default function AdminProfile() {
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,6 +82,12 @@ export default function AdminProfile() {
     }
   }
 
+  function clearPending() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl('');
+    setPendingFile(null);
+  }
+
   function handleEdit() {
     if (data) setForm({ ...data });
     setIsEditing(true);
@@ -90,6 +97,7 @@ export default function AdminProfile() {
 
   function handleDiscard() {
     if (data) setForm({ ...data });
+    clearPending();
     setIsEditing(false);
     setError(null);
   }
@@ -99,16 +107,18 @@ export default function AdminProfile() {
     setSaving(true);
     setError(null);
     try {
-      await updateProfile(auth.currentUser!, {
-        displayName: form.name,
-        photoURL: form.photoURL,
-      });
+      let photoURL = form.photoURL;
+      if (pendingFile) {
+        photoURL = await uploadImageToImageKit(pendingFile, 'admin-profiles');
+      }
+      await updateProfile(auth.currentUser!, { displayName: form.name, photoURL });
       const adminRef = doc(db, 'admins', currentUser.uid);
       const snap = await getDoc(adminRef);
       if (snap.exists()) {
         await updateDoc(adminRef, { name: form.name });
       }
-      setData({ ...form });
+      setData({ ...form, photoURL });
+      clearPending();
       setIsEditing(false);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -120,21 +130,13 @@ export default function AdminProfile() {
     }
   }
 
-  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !form) return;
-    setUploadingPhoto(true);
-    setError(null);
-    try {
-      const url = await uploadImageToImageKit(file, 'admin-profiles');
-      setForm(prev => prev ? { ...prev, photoURL: url } : prev);
-    } catch (err) {
-      console.error('Photo upload failed:', err);
-      setError('Failed to upload photo.');
-    } finally {
-      setUploadingPhoto(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+    if (!file) return;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(URL.createObjectURL(file));
+    setPendingFile(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
   if (loading) {
@@ -146,7 +148,7 @@ export default function AdminProfile() {
   }
 
   const display = isEditing ? form : data;
-  const photo = display?.photoURL;
+  const photo = previewUrl || display?.photoURL;
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -195,20 +197,15 @@ export default function AdminProfile() {
 
         {/* Photo */}
         <div className="flex items-center gap-4">
-          <div className="relative w-20 h-20 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+          <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
             <img src={photo || ''} alt="Profile" className="w-full h-full object-cover" />
-            {uploadingPhoto && (
-              <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              </div>
-            )}
           </div>
           {isEditing && (
             <div className="flex flex-col gap-2">
               <button
                 type="button"
-                onClick={() => setForm(prev => prev ? { ...prev, photoURL: randomDiceBearUrl() } : prev)}
-                disabled={uploadingPhoto}
+                onClick={() => { clearPending(); setForm(prev => prev ? { ...prev, photoURL: randomDiceBearUrl() } : prev); }}
+                disabled={saving}
                 className="flex items-center gap-2 text-sm text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
               >
                 <Shuffle className="w-4 h-4" />
@@ -217,7 +214,7 @@ export default function AdminProfile() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingPhoto}
+                disabled={saving}
                 className="flex items-center gap-2 text-sm text-slate-700 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors disabled:opacity-50"
               >
                 <Upload className="w-4 h-4" />
@@ -284,7 +281,7 @@ export default function AdminProfile() {
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || uploadingPhoto}
+            disabled={saving}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors disabled:opacity-50"
           >
             {saving ? (
