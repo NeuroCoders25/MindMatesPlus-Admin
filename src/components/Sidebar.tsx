@@ -11,6 +11,7 @@ import {
   MessageSquareQuote,
   MessageSquare,
   Settings,
+  Headphones,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
@@ -33,6 +34,7 @@ const navItems = [
   { name: 'Reports & Analytics', path: '/reports', icon: BarChart3 },
   { name: 'Feedback', path: '/feedback', icon: MessageSquareQuote },
   { name: 'Advisor Chat', path: '/advisor-chat', icon: MessageSquare },
+  { name: 'System Support', path: '/support', icon: Headphones },
   { name: 'System Settings', path: '/settings', icon: Settings },
 ];
 

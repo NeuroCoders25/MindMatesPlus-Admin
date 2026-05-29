@@ -23,6 +23,7 @@ import Feedback from './pages/Feedback';
 import Settings from './pages/Settings';
 import AdvisorProfile from './pages/AdvisorProfile';
 import AdminProfile from './pages/AdminProfile';
+import SystemSupport from './pages/SystemSupport';
 
 function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -69,6 +70,7 @@ export default function App() {
                     <Route path="/settings" element={<Settings />} />
                     <Route path="/advisor-profile/:id" element={<AdvisorProfile />} />
                     <Route path="/admin-profile" element={<AdminProfile />} />
+                    <Route path="/support" element={<SystemSupport />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </DashboardLayout>
