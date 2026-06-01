@@ -14,6 +14,7 @@ import {
 import { db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { chatService } from '../services/chatService';
+import { safeText } from '../services/cryptoService';
 import { cn } from '../lib/utils';
 import type {
   SupportRequest, SupportCategory, SupportPriority,
@@ -630,7 +631,7 @@ export default function SystemSupport() {
                               ? 'bg-indigo-600 text-white rounded-tr-none'
                               : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none'
                           )}>
-                            {msg.messageText}
+                            {safeText(msg.messageText)}
                           </div>
                           <span className="text-[10px] text-slate-400 mt-1 px-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             {formatTime(msg.createdAt)}
