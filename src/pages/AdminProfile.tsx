@@ -31,7 +31,7 @@ interface AdminData {
 }
 
 export default function AdminProfile() {
-  const { currentUser } = useAuth();
+  const { currentUser, refreshUser } = useAuth();
   const navigate = useNavigate();
 
   const [data, setData] = useState<AdminData | null>(null);
@@ -112,10 +112,11 @@ export default function AdminProfile() {
         photoURL = await uploadImageToImageKit(pendingFile, 'admin-profiles');
       }
       await updateProfile(auth.currentUser!, { displayName: form.name, photoURL });
+      refreshUser();
       const adminRef = doc(db, 'admins', currentUser.uid);
       const snap = await getDoc(adminRef);
       if (snap.exists()) {
-        await updateDoc(adminRef, { name: form.name });
+        await updateDoc(adminRef, { name: form.name, photoURL });
       }
       setData({ ...form, photoURL });
       clearPending();

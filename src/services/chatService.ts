@@ -22,7 +22,7 @@ export interface ChatMessage {
   receiverId: string;
   messageText: string;
   messageType: 'text';
-  createdAt: Timestamp | unknown;
+  createdAt: Timestamp | any;
   isRead: boolean;
 }
 
@@ -35,9 +35,9 @@ export interface PrivateChat {
   chatType: 'admin_advisor';
   lastMessage: string;
   lastMessageSenderId: string;
-  lastMessageAt: Timestamp | unknown;
-  createdAt: Timestamp | unknown;
-  updatedAt: Timestamp | unknown;
+  lastMessageAt: Timestamp | any;
+  createdAt: Timestamp | any;
+  updatedAt: Timestamp | any;
 }
 
 export const chatService = {

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { UsersRound, Activity, Plus, X, ImagePlus, Trash2, AlertTriangle, Pencil } from 'lucide-react';
+import { UsersRound, Activity, Plus, X, ImagePlus, Trash2, AlertTriangle, Pencil, MessageSquareX } from 'lucide-react';
 import DataTable from '../components/DataTable';
 import { cn } from '../lib/utils';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import {
   collection,
   addDoc,
@@ -14,6 +14,8 @@ import {
   deleteDoc,
   doc,
   updateDoc,
+  writeBatch,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { uploadImageToImageKit } from '../services/imageUploadService';
 
@@ -80,6 +82,9 @@ export default function PeerGroups() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [groupToDelete, setGroupToDelete] = useState<FirestorePeerGroup | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [clearingGroupId, setClearingGroupId] = useState<string | null>(null);
+  const [confirmClearGroup, setConfirmClearGroup] = useState<{ docId: string; name: string } | null>(null);
+  const [clearResult, setClearResult] = useState<{ success: boolean; count: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -414,6 +419,69 @@ export default function PeerGroups() {
     if (editFileInputRef.current) editFileInputRef.current.value = '';
   };
 
+  const clearGroupChat = async (docId: string): Promise<{ success: boolean; deletedCount: number; error?: string }> => {
+    try {
+      const messagesRef = collection(db, 'peer_groups', docId, 'chatMessages');
+      const snapshot = await getDocs(messagesRef);
+      if (snapshot.empty) return { success: true, deletedCount: 0 };
+
+      const threadDeletions: Promise<void>[] = [];
+      snapshot.docs.forEach(msgDoc => {
+        const threadRef = collection(db, 'peer_groups', docId, 'chatMessages', msgDoc.id, 'privateThread');
+        threadDeletions.push(
+          getDocs(threadRef).then(threadSnap => {
+            const deletes = threadSnap.docs.map(t => deleteDoc(t.ref));
+            return Promise.all(deletes).then(() => {});
+          })
+        );
+      });
+      await Promise.all(threadDeletions);
+
+      const BATCH_SIZE = 500;
+      let deletedCount = 0;
+      const allDocs = snapshot.docs;
+      for (let i = 0; i < allDocs.length; i += BATCH_SIZE) {
+        const batch = writeBatch(db);
+        allDocs.slice(i, i + BATCH_SIZE).forEach(d => {
+          batch.delete(d.ref);
+          deletedCount++;
+        });
+        await batch.commit();
+      }
+
+      await updateDoc(doc(db, 'peer_groups', docId), {
+        lastMessage: null,
+        lastMessageAt: null,
+        messageCount: 0,
+      }).catch(() => {});
+
+      await addDoc(collection(db, 'adminAuditLog'), {
+        action: 'CLEAR_GROUP_CHAT',
+        groupDocId: docId,
+        performedBy: auth.currentUser?.uid ?? null,
+        performedByEmail: auth.currentUser?.email ?? null,
+        deletedMessageCount: deletedCount,
+        timestamp: serverTimestamp(),
+      }).catch(() => {});
+
+      return { success: true, deletedCount };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('clearGroupChat error:', e);
+      return { success: false, deletedCount: 0, error: msg };
+    }
+  };
+
+  const handleClearChat = async () => {
+    if (!confirmClearGroup) return;
+    setClearingGroupId(confirmClearGroup.docId);
+    const result = await clearGroupChat(confirmClearGroup.docId);
+    setClearingGroupId(null);
+    setConfirmClearGroup(null);
+    setClearResult({ success: result.success, count: result.deletedCount });
+    setTimeout(() => setClearResult(null), 4000);
+  };
+
   const handleSaveEdit = async () => {
     if (!editingGroup || !editName.trim()) {
       setEditError('Group name is required.');
@@ -683,6 +751,21 @@ export default function PeerGroups() {
                   title="Edit group"
                 >
                   <Pencil className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmClearGroup({ docId: group.docId, name: group.group_name });
+                  }}
+                  disabled={clearingGroupId === group.docId}
+                  className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0 disabled:opacity-50"
+                  title="Clear all chat messages"
+                >
+                  {clearingGroupId === group.docId
+                    ? <span className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin inline-block" />
+                    : <MessageSquareX className="w-4 h-4" />
+                  }
                 </button>
 
                 <button
@@ -1072,6 +1155,70 @@ export default function PeerGroups() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Clear Chat Confirmation Modal */}
+      {confirmClearGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            onClick={() => { if (!clearingGroupId) setConfirmClearGroup(null); }}
+          />
+          <div className="relative bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md p-6 space-y-5">
+
+            <div className="flex items-center justify-center w-14 h-14 bg-red-100 rounded-full mx-auto">
+              <MessageSquareX className="w-7 h-7 text-red-600" />
+            </div>
+
+            <div className="text-center">
+              <h3 className="text-xl font-semibold text-slate-800">Clear Chat History?</h3>
+              <p className="text-slate-500 text-sm mt-1">
+                You are about to permanently delete ALL messages in:
+              </p>
+              <p className="text-slate-800 font-semibold mt-1">{confirmClearGroup.name}</p>
+            </div>
+
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+              <p className="text-red-700 text-sm font-medium">⚠ This action is irreversible.</p>
+              <p className="text-red-600 text-sm mt-1">
+                All chat messages and private threads in this group will be permanently deleted from the database. This cannot be undone.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmClearGroup(null)}
+                disabled={clearingGroupId !== null}
+                className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearChat}
+                disabled={clearingGroupId !== null}
+                className="flex-1 py-3 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+              >
+                {clearingGroupId !== null
+                  ? <>
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Clearing...
+                    </>
+                  : 'Yes, clear all messages'
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear chat result toast */}
+      {clearResult && (
+        <div className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-lg text-white text-sm font-medium flex items-center gap-2 ${clearResult.success ? 'bg-green-600' : 'bg-red-600'}`}>
+          {clearResult.success
+            ? <>✓ Chat cleared — {clearResult.count} message{clearResult.count !== 1 ? 's' : ''} deleted</>
+            : <>✗ Failed to clear chat. Please try again.</>
+          }
         </div>
       )}
     </div>
