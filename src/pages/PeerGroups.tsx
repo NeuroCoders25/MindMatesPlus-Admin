@@ -39,6 +39,7 @@ interface FirestorePeerGroup {
   group_moderator: string;
   created_at: Timestamp;
   updated_at: Timestamp;
+  memberCount?: number;
 }
 
 interface ModeratorOption {
@@ -184,9 +185,9 @@ export default function PeerGroups() {
   const tableGroups = useMemo((): PeerGroup[] => {
     const now = Date.now();
     return firestoreGroups.map((g) => {
-      const memberCount = groupMemberCounts[g.group_id] ?? 0;
-      const messageCount = groupMessageCounts[g.group_id] ?? 0;
-      const lastMsgMs = groupLastMessageAt[g.group_id] ?? 0;
+      const memberCount = groupMemberCounts[g.docId] ?? groupMemberCounts[g.group_id] ?? g.memberCount ?? 0;
+      const messageCount = groupMessageCounts[g.docId] ?? groupMessageCounts[g.group_id] ?? 0;
+      const lastMsgMs = groupLastMessageAt[g.docId] ?? groupLastMessageAt[g.group_id] ?? 0;
       const daysSinceMsg = lastMsgMs > 0 ? Math.floor((now - lastMsgMs) / 86_400_000) : Infinity;
 
       let activityLevel: 'High' | 'Medium' | 'Low';
@@ -218,9 +219,9 @@ export default function PeerGroups() {
     // Enrich every group with real member count + real message activity
     const enriched = firestoreGroups.map((g) => ({
       ...g,
-      memberCount: groupMemberCounts[g.group_id] ?? 0,
-      messageCount: groupMessageCounts[g.group_id] ?? 0,
-      lastMsgMs: groupLastMessageAt[g.group_id] ?? 0,
+      memberCount: groupMemberCounts[g.docId] ?? groupMemberCounts[g.group_id] ?? g.memberCount ?? 0,
+      messageCount: groupMessageCounts[g.docId] ?? groupMessageCounts[g.group_id] ?? 0,
+      lastMsgMs: groupLastMessageAt[g.docId] ?? groupLastMessageAt[g.group_id] ?? 0,
     }));
 
     // ── Most Active ───────────────────────────────────────────────────────────
