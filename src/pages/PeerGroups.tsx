@@ -214,7 +214,6 @@ export default function PeerGroups() {
     if (firestoreGroups.length === 0) return null;
 
     const now = Date.now();
-    const thirtyDaysAgo = now - 30 * 86_400_000;
 
     // Enrich every group with real member count + real message activity
     const enriched = firestoreGroups.map((g) => ({
@@ -237,16 +236,20 @@ export default function PeerGroups() {
       : null;
 
     // ── Fastest Growing ───────────────────────────────────────────────────────
-    // Among groups that actually have members, prefer those created recently
-    // (last 30 days) with the most members = fastest accumulation.
-    // If no group has members at all, fall back to null.
+    // True growth velocity = members accumulated per day since the group was
+    // created (memberCount / ageInDays). This ranks every group that has
+    // members on a level playing field — a long-running group that organically
+    // grew to many members can win, just as a brand-new group that picked up
+    // members quickly can. (A simple "most members among recently-created
+    // groups" comparison would unfairly hide older groups that grew faster
+    // overall, and reward a new group merely for being new.)
     const groupsWithMembers = enriched.filter((g) => g.memberCount > 0);
-    const recentWithMembers = groupsWithMembers.filter(
-      (g) => (g.created_at?.toMillis?.() ?? 0) >= thirtyDaysAgo
-    );
-    const fastestPool = recentWithMembers.length > 0 ? recentWithMembers : groupsWithMembers;
-    const fastestGrowing = fastestPool.length > 0
-      ? [...fastestPool].sort((a, b) => b.memberCount - a.memberCount)[0]
+    const fastestGrowing = groupsWithMembers.length > 0
+      ? [...groupsWithMembers].sort((a, b) => {
+          const ageDaysA = Math.max(1, (now - (a.created_at?.toMillis?.() ?? now)) / 86_400_000);
+          const ageDaysB = Math.max(1, (now - (b.created_at?.toMillis?.() ?? now)) / 86_400_000);
+          return (b.memberCount / ageDaysB) - (a.memberCount / ageDaysA);
+        })[0]
       : null;
     const fastestCreatedMs = fastestGrowing?.created_at?.toMillis?.() ?? now;
     const fastestDaysAgo = Math.floor((now - fastestCreatedMs) / 86_400_000);
