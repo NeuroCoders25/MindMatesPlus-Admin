@@ -110,20 +110,30 @@ export default function SystemSupport() {
   useEffect(() => {
     if (!currentUser) return;
     const adminRef = doc(db, 'admins', currentUser.uid);
-    getDoc(adminRef).then(snap => {
-      if (snap.exists()) {
-        setMyAvailability(snap.data().availability ?? 'online');
-      } else {
-        // First-time: create the record
-        setDoc(adminRef, {
-          name: currentUser.displayName || currentUser.email || 'Admin',
-          email: currentUser.email || '',
-          role: 'System Admin',
-          availability: 'online',
-          lastSeen: serverTimestamp(),
-        }, { merge: true });
+    const unsubscribe = onSnapshot(
+      adminRef,
+      (snap) => {
+        if (snap.exists()) {
+          setMyAvailability(snap.data().availability ?? 'online');
+        } else {
+          setDoc(
+            adminRef,
+            {
+              name: currentUser.displayName || currentUser.email || 'Admin',
+              email: currentUser.email || '',
+              role: 'System Admin',
+              availability: 'online',
+              lastSeen: serverTimestamp(),
+            },
+            { merge: true }
+          ).catch((err) => console.error('Failed to create admin record:', err));
+        }
+      },
+      (err) => {
+        console.error('Admin snapshot error:', err);
       }
-    });
+    );
+    return unsubscribe;
   }, [currentUser]);
 
   // ── Listen to all support requests ───────────────────────────────────────
@@ -172,16 +182,35 @@ export default function SystemSupport() {
   // ── Update own availability ───────────────────────────────────────────────
   const handleAvailability = async (val: AvailabilityStatus) => {
     if (!currentUser || availLoading) return;
+    const prevAvailability = myAvailability;
     setAvailLoading(true);
     setMyAvailability(val);
+
     try {
-      await setDoc(doc(db, 'admins', currentUser.uid), {
-        name: currentUser.displayName || currentUser.email || 'Admin',
-        email: currentUser.email || '',
-        role: 'System Admin',
+      const adminRef = doc(db, 'admins', currentUser.uid);
+      const snap = await getDoc(adminRef);
+      const payload = {
         availability: val,
         lastSeen: serverTimestamp(),
-      }, { merge: true });
+      } as Record<string, unknown>;
+
+      if (snap.exists()) {
+        await updateDoc(adminRef, payload);
+      } else {
+        await setDoc(
+          adminRef,
+          {
+            name: currentUser.displayName || currentUser.email || 'Admin',
+            email: currentUser.email || '',
+            role: 'System Admin',
+            ...payload,
+          },
+          { merge: true }
+        );
+      }
+    } catch (err) {
+      console.error('Failed to update availability:', err);
+      setMyAvailability(prevAvailability);
     } finally {
       setAvailLoading(false);
     }
