@@ -1,22 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Search, 
-  Send, 
-  User, 
-  MoreVertical, 
-  Phone, 
-  Video, 
-  MessageSquare
+import {
+  Search,
+  Send,
+  User,
+  MoreVertical,
+  Phone,
+  Video,
+  MessageSquare,
+  ExternalLink
 } from 'lucide-react';
-import { 
-  collection, 
-  query, 
-  onSnapshot, 
+import {
+  collection,
+  query,
+  onSnapshot,
 } from 'firebase/firestore';
 import { db as firestoreDb } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { chatService, ChatMessage, PrivateChat } from '../services/chatService';
+import { safeText } from '../services/cryptoService';
+import { useNavigate } from 'react-router-dom';
 
 interface Advisor {
   id: string;
@@ -30,6 +33,7 @@ interface Advisor {
 
 export default function AdvisorChat() {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const [advisors, setAdvisors] = useState<Advisor[]>([]);
   const [selectedAdvisor, setSelectedAdvisor] = useState<Advisor | null>(null);
   const [chats, setChats] = useState<PrivateChat[]>([]);
@@ -217,7 +221,7 @@ export default function AdvisorChat() {
                         <p className="text-sm font-bold text-slate-900 truncate">{advisor.name}</p>
                       </div>
                       <p className="text-xs text-slate-500 truncate font-medium">
-                        {lastMsg || advisor.specialization}
+                        {safeText(lastMsg) || advisor.specialization}
                       </p>
                     </div>
                   </button>
@@ -278,6 +282,14 @@ export default function AdvisorChat() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                <button
+                  onClick={() => navigate(`/advisor-profile/${selectedAdvisor.id}`)}
+                  title="View Profile"
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  View Profile
+                </button>
                 <button className="p-2.5 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-indigo-600 transition-all">
                   <Phone className="w-5 h-5" />
                 </button>
@@ -310,7 +322,7 @@ export default function AdvisorChat() {
                           ? "bg-indigo-600 text-white rounded-tr-none hover:bg-indigo-700 shadow-indigo-100" 
                           : "bg-white text-slate-700 border border-slate-100 rounded-tl-none hover:border-slate-200"
                       )}>
-                        {msg.messageText}
+                        {safeText(msg.messageText)}
                       </div>
                       <span className="text-[10px] font-bold text-slate-400 mt-2 px-1 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wider">
                         {msg.createdAt?.toDate ? msg.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}

@@ -73,7 +73,7 @@ function downloadPDF(rows: Record<string, unknown>[], title: string, filename: s
 interface UserDoc       { id: string; name?: string; email?: string; createdAt?: Date }
 interface JournalDoc    { id: string; userId: string; title: string; moodTag: string; date: Date }
 interface MentalDoc     { userId: string; category: string; mainCondition: string; totalScore: number; completedAt?: Date }
-interface PeerGroupDoc  { docId: string; group_id: string; group_name: string; group_category: string; group_moderator: string; created_at?: Date }
+interface PeerGroupDoc  { docId: string; group_id: string; group_name: string; group_category: string; group_moderator: string; created_at?: Date; memberCount?: number }
 
 type DateRangeKey = '7' | '30' | '90' | 'all';
 type MetricKey    = 'user_growth' | 'journal_activity' | 'emotional_distribution' | 'mental_health_risk' | 'peer_groups';
@@ -141,7 +141,7 @@ export default function Reports() {
     collection(db, 'peer_groups'),
     snap => setPeerGroups(snap.docs.map(d => {
       const data = d.data();
-      return { docId: d.id, group_id: data.group_id ?? d.id, group_name: data.group_name ?? 'Unnamed', group_category: data.group_category ?? '', group_moderator: data.group_moderator ?? '', created_at: toDate(data.created_at) };
+      return { docId: d.id, group_id: data.group_id ?? d.id, group_name: data.group_name ?? 'Unnamed', group_category: data.group_category ?? '', group_moderator: data.group_moderator ?? '', created_at: toDate(data.created_at), memberCount: data.memberCount };
     })),
     err => console.error('Peer groups listener:', err)
   ), []);
@@ -296,7 +296,7 @@ export default function Reports() {
         'Group Name':   g.group_name,
         'Category':     g.group_category,
         'Moderator':    g.group_moderator || 'N/A',
-        'Member Count': groupMemberCounts[g.group_id] ?? 0,
+        'Member Count': groupMemberCounts[g.docId] ?? g.memberCount ?? groupMemberCounts[g.group_id] ?? 0,
         'Created Date': g.created_at ? g.created_at.toLocaleDateString() : 'N/A',
       })),
       `peer-groups-report-${new Date().toISOString().slice(0, 10)}.csv`
@@ -386,7 +386,7 @@ export default function Reports() {
               'Group Name':   g.group_name,
               'Category':     g.group_category,
               'Moderator':    g.group_moderator || 'N/A',
-              'Member Count': groupMemberCounts[g.group_id] ?? 0,
+              'Member Count': groupMemberCounts[g.docId] ?? g.memberCount ?? groupMemberCounts[g.group_id] ?? 0,
               'Created Date': g.created_at ? g.created_at.toLocaleDateString() : 'N/A',
             })),
           };
